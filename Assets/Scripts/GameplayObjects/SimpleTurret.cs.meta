@@ -1,0 +1,10 @@
+fileFormatVersion: 2
+guid: b160309fccd948cbb50a2c31c0c44d53
+timeCreated: 1655218082
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Scripts/GameplayObjects/SimpleTurret.cs
+  uploadId: 718776

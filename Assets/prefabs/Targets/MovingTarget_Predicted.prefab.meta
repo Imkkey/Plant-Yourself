@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: f0369e6b0f76b024ebb411726f839111
+labels:
+- FusionPrefab
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Prefabs/Targets/MovingTarget_Predicted.prefab
+  uploadId: 718776

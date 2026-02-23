@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 3970da32f918b3e4696dd2c9a07ad6dd
+labels:
+- FusionPrefab
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Prefabs/Projectiles/TurretStandaloneProjectile.prefab
+  uploadId: 718776

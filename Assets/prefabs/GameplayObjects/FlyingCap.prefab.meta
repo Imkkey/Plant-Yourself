@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 2cf998a7edf4a7c4cbcda4d4f94c3255
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Prefabs/GameplayObjects/FlyingCap.prefab
+  uploadId: 718776

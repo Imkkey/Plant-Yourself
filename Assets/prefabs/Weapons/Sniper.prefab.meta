@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 4f9a1fda6ff647b47a3951dc3f1de03d
+labels:
+- FusionPrefab
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Prefabs/Weapons/Sniper.prefab
+  uploadId: 718776

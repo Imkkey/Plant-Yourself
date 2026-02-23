@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 610f2de150d6a80499f60bde1767586f
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Prefabs/Weapons/FireAudioEffects.prefab
+  uploadId: 718776

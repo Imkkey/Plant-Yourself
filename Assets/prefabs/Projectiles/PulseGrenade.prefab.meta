@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 1cbad648f9ef5cd4fbbdd4eb8d57129f
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Prefabs/Projectiles/PulseGrenade.prefab
+  uploadId: 718776

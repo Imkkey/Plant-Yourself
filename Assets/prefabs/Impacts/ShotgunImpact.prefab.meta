@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 9d0eab054929ee94ca3eae5cfc299cfa
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Prefabs/Impacts/ShotgunImpact.prefab
+  uploadId: 718776

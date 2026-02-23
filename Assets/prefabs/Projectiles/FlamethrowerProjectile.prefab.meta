@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 5d8be0dd08599704ba0f8a3b9a54e9b8
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Prefabs/Projectiles/FlamethrowerProjectile.prefab
+  uploadId: 718776

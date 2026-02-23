@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 3bc7f45f9ae53ce439b9175b6dd29a3b
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/PhotonSamples/CapsuleDummy/Materials/PhotonCap.mat
+  uploadId: 718776

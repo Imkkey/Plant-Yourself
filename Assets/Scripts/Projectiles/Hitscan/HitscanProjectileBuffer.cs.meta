@@ -1,0 +1,10 @@
+﻿fileFormatVersion: 2
+guid: 9e1ec3a6e7484f908ba3951868bfdc63
+timeCreated: 1708945765
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Scripts/Projectiles/Hitscan/HitscanProjectileBuffer.cs
+  uploadId: 718776

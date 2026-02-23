@@ -1,0 +1,11 @@
+fileFormatVersion: 2
+guid: 34192c5e0d14aee43a0e86cc4823268a
+TextScriptImporter:
+  userData: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/3rdParty/Plugins/Demigiant/DOTween/DOTween.XML
+  uploadId: 718776

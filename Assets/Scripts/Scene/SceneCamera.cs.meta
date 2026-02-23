@@ -1,0 +1,10 @@
+fileFormatVersion: 2
+guid: a623850a7b454ffdb27341a3d4458515
+timeCreated: 1647855477
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Scripts/Scene/SceneCamera.cs
+  uploadId: 718776

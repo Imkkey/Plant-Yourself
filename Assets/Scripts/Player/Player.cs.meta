@@ -1,0 +1,10 @@
+﻿fileFormatVersion: 2
+guid: 50bc2ee29edc4304bc7442ff95331573
+timeCreated: 1645441911
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Scripts/Player/Player.cs
+  uploadId: 718776

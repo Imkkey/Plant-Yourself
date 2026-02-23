@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: c89643832265e2d4a9b82ccd69f408c2
+labels:
+- FusionPrefab
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Prefabs/Weapons/Rifle.prefab
+  uploadId: 718776

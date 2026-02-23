@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: b9f021be8f8b93a4e8f3358e140cac09
+labels:
+- FusionPrefab
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Prefabs/Targets/MovingTarget_LagCompensated.prefab
+  uploadId: 718776

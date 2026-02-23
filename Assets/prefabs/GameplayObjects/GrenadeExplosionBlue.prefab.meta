@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 508f7826b1eb67c4d9c2967bd7153489
+labels:
+- FusionPrefab
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Prefabs/GameplayObjects/GrenadeExplosionBlue.prefab
+  uploadId: 718776

@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 397881b0743921046afe7751dfa6e647
+labels:
+- FusionPrefab
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Prefabs/Weapons/RicochetGun.prefab
+  uploadId: 718776
