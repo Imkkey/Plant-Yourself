@@ -39,6 +39,13 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
     [SerializeField] private Button      disconnectButton;
     [SerializeField] private TMP_Text    statusText;
 
+    [Header("── Тестовое Оружие ────────────────────")]
+    [Tooltip("Префаб оружия (WeaponPickup) для спавна на старте сервера")]
+    [SerializeField] private NetworkPrefabRef testWeaponPrefab;
+
+    [Tooltip("Точки, на которых будет спавниться оружие (перетащи сюда пустые объекты со сцены)")]
+    [SerializeField] private Transform[] weaponSpawnPoints;
+
     // ── Внутренние переменные ────────────────────────────────────
 
     private NetworkRunner _runner;
@@ -176,6 +183,26 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
             SetStatus(mode == GameMode.Host
                 ? $"Хост: {roomName}  |  Ожидаем игроков..."
                 : $"Подключён к: {roomName}");
+
+            // Спавним оружие сразу после успешного создания сервера
+            if (mode == GameMode.Host && testWeaponPrefab != NetworkPrefabRef.Empty)
+            {
+                if (weaponSpawnPoints != null && weaponSpawnPoints.Length > 0)
+                {
+                    foreach (var spawnPoint in weaponSpawnPoints)
+                    {
+                        if (spawnPoint != null)
+                        {
+                            _runner.Spawn(testWeaponPrefab, spawnPoint.position, spawnPoint.rotation);
+                        }
+                    }
+                }
+                else
+                {
+                    _runner.Spawn(testWeaponPrefab, new Vector3(2f, 1f, 2f), Quaternion.identity);
+                    _runner.Spawn(testWeaponPrefab, new Vector3(-2f, 1f, 2f), Quaternion.identity);
+                }
+            }
         }
         else
         {
@@ -242,7 +269,9 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
     }
 
     public void OnConnectedToServer(NetworkRunner runner)
-        => SetStatus("Подключён к серверу!");
+    {
+        SetStatus("Подключён к серверу!");
+    }
 
     public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason)
         => SetStatus($"Отключён от сервера: {reason}");

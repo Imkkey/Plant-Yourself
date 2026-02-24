@@ -31,6 +31,10 @@ public class Projectile : NetworkBehaviour
 
     public override void FixedUpdateNetwork()
     {
+        // Прокси (другие клиенты) просто считывают позицию с NetworkTransform, 
+        // они не должны двигать пулю сами, иначе она будет "дёргаться"
+        if (!HasStateAuthority && !Object.HasInputAuthority) return;
+
         // Проверяем, не истек ли срок жизни снаряда
         if (_lifeTimer.Expired(Runner))
         {

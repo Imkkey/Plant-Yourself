@@ -95,6 +95,7 @@ public class PlayerController : NetworkBehaviour
     private Mouse    _mouse;
 
     [Networked] private Vector3 _velocity { get; set; }
+    [Networked] private NetworkBool _isGrounded { get; set; }
 
     // Характеристики класса
     [Networked] public PlayerClass CurrentClass { get; private set; }
@@ -397,7 +398,9 @@ public class PlayerController : NetworkBehaviour
             if ((jumpPressed || (jumpHeld && isMoving)) && TryStartMantle()) return;
         }
 
-        if (_cc.isGrounded)
+        // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Используем занетворканый результат проверки земли (_isGrounded).
+        // Иначе при сетевом откате (Rollback) Unity's _cc.isGrounded дает сбой и прыжок "съедается", вызывая дёргания.
+        if (_isGrounded)
         {
             Vector3 vel = _velocity;
             if (vel.y < 0f) vel.y = -2f;
@@ -420,6 +423,9 @@ public class PlayerController : NetworkBehaviour
         }
 
         _cc.Move((moveDir * speed + Vector3.up * _velocity.y) * Runner.DeltaTime);
+        
+        // Запоминаем стейт земли в сеть, чтобы в следующем кадре или при откате он был точен на 100%
+        _isGrounded = _cc.isGrounded;
     }
 
     private bool TryStartMantle()
@@ -505,8 +511,11 @@ public class PlayerController : NetworkBehaviour
             newPos = Vector3.Lerp(_mantleTopPos, _mantleEndPos, t2);
         }
 
-        Vector3 delta = newPos - transform.position;
-        _cc.Move(delta);
+        // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Отключаем CC при жестком изменении позиции.
+        // Иначе физика борется с сетевым транспортом, вызывая судороги.
+        _cc.enabled = false;
+        transform.position = newPos;
+        _cc.enabled = true;
 
         if (_mantleProgress >= 1f)
         {

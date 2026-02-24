@@ -1,0 +1,84 @@
+using UnityEngine;
+using TMPro;
+using Fusion;
+
+public class GameStatsUI : MonoBehaviour
+{
+    [Header("UI Элемент")]
+    [Tooltip("Перетащи сюда TextMeshPro - Text для вывода статистики")]
+    [SerializeField] private TMP_Text statsText;
+    
+    [Header("Настройки")]
+    [SerializeField] private string gameVersion = "1.0 Alpha";
+    [SerializeField] private float updateInterval = 0.5f; // Как часто обновлять текст (раз в 0.5с)
+
+    private float _timer;
+    private int _frameCount;
+    private float _deltaTime;
+    private float _fps;
+
+    private NetworkRunner _runner;
+
+    private void Update()
+    {
+        // Подсчет FPS
+        _frameCount++;
+        _deltaTime += Time.unscaledDeltaTime;
+        
+        // Обновляем текст каждые полсекунды, чтобы он не так сильно мелькал
+        if (_deltaTime > updateInterval)
+        {
+            _fps = _frameCount / _deltaTime;
+            _frameCount = 0;
+            _deltaTime -= updateInterval;
+            
+            UpdateUI();
+        }
+    }
+
+    private void UpdateUI()
+    {
+        if (statsText == null) return;
+
+        // Ищем раннер (если он запущен или мы переподключились)
+        if (_runner == null || !_runner.IsRunning)
+        {
+            _runner = FindObjectOfType<NetworkRunner>();
+        }
+
+        string pingStr = "Offline";
+        string regionStr = "N/A";
+        string roomStr = "N/A";
+        string playersStr = "0";
+        string modeStr = "Offline";
+
+        if (_runner != null && _runner.IsRunning)
+        {
+            // Пинг (RTT = Round Trip Time)
+            double rtt = _runner.GetPlayerRtt(_runner.LocalPlayer) * 1000.0;
+            pingStr = $"{rtt:0} ms";
+
+            // Информация о режиме
+            modeStr = _runner.GameMode.ToString();
+
+            // Инфа по текущей комнате
+            if (_runner.SessionInfo != null && _runner.SessionInfo.IsValid)
+            {
+                roomStr = _runner.SessionInfo.Name;
+                regionStr = string.IsNullOrWhiteSpace(_runner.SessionInfo.Region) ? "Auto" : _runner.SessionInfo.Region;
+                playersStr = $"{_runner.SessionInfo.PlayerCount} / {_runner.SessionInfo.MaxPlayers}";
+            }
+        }
+
+        // Формируем красивый текст с поддержкой цветов HTML
+        string text = $"<color=#00FF00><b>FPS:</b></color> {_fps:0}\n";
+        text += $"<color=#00FFFF><b>Ping:</b></color> {pingStr}\n";
+        text += $"<color=#FFA500><b>Room:</b></color> {roomStr}\n";
+        text += $"<color=#FFFF00><b>Region:</b></color> {regionStr}\n";
+        text += $"<color=#FF69B4><b>Players:</b></color> {playersStr}\n";
+        text += $"<color=#ADD8E6><b>Mode:</b></color> {modeStr}\n";
+        text += $"<color=#AAAAAA><b>Version:</b></color> {gameVersion}";
+
+        statsText.text = text;
+    }
+}
