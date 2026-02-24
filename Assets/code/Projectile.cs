@@ -46,10 +46,21 @@ public class Projectile : NetworkBehaviour
         Vector3 moveDelta = _velocity * Runner.DeltaTime;
         
         // Перед тем как сдвинуть, пускаем Raycast чтобы не пролететь сквозь стену
-        if (Physics.Raycast(transform.position, _velocity.normalized, out RaycastHit hit, moveDelta.magnitude))
+        // Используем RaycastAll с сортировкой, чтобы игнорировать владельца
+        RaycastHit[] hits = Physics.RaycastAll(transform.position, _velocity.normalized, moveDelta.magnitude);
+        if (hits.Length > 0)
         {
-            HitSomething(hit.collider);
-            return;
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+            foreach (var hit in hits)
+            {
+                PlayerController target = hit.collider.GetComponent<PlayerController>();
+                // Игнорируем попадание в самого себя
+                if (target != null && target.Object != null && target.Object.InputAuthority == _ownerId)
+                    continue;
+
+                HitSomething(hit.collider);
+                return;
+            }
         }
 
         // Если не врезались, просто двигаемся

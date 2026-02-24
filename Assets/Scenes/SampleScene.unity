@@ -2544,8 +2544,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameStatsUI
   statsText: {fileID: 845002102}
-  gameVersion: v5
-  updateInterval: 0.5
+  gameVersion: v6
+  updateInterval: 0.01
 --- !u!114 &845002102
 MonoBehaviour:
   m_ObjectHideFlags: 0

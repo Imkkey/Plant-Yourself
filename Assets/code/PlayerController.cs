@@ -350,14 +350,10 @@ public class PlayerController : NetworkBehaviour
             if (_primaryAttackTimer > 0f)   _primaryAttackTimer -= Runner.DeltaTime;
             if (_secondaryAttackTimer > 0f) _secondaryAttackTimer -= Runner.DeltaTime;
 
-            // ── КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: МИКРО-ДЁРГАНИЯ ────────
-            // Применяем поворот для других игроков (сервер транслирует это),
-            // но локальный игрок НЕ перезаписывает свой transform в FUN!
-            // Это решает проблему дёрганий на клиенте, когда FUN и Update борются за ротацию.
-            if (HasStateAuthority)
-            {
-                transform.rotation = Quaternion.Euler(0f, input.LookAngles.y, 0f);
-            }
+            // Применяем поворот в ходе симуляции, чтобы NetworkTransform
+            // корректно захватывал предсказанное вращение на клиенте-владельце
+            // и не вызывал дёрганий от интерполяции к серверному состоянию.
+            transform.rotation = Quaternion.Euler(0f, input.LookAngles.y, 0f);
 
             HandleCrouch();
             HandleDashRecharge();
@@ -450,6 +446,11 @@ public class PlayerController : NetworkBehaviour
             Vector3 origin = new Vector3(transform.position.x, feetY + _standHeight * t, transform.position.z);
             if (Physics.SphereCast(origin, _cc.radius * 0.5f, moveDir, out RaycastHit hit, mantleReach))
             {
+                // Игнорируем самого себя, других игроков, пули и предметы
+                if (hit.collider.transform.root == transform.root) continue;
+                if (hit.collider.GetComponentInParent<NetworkBehaviour>() != null && !hit.collider.gameObject.isStatic)
+                    continue;
+
                 wallHit  = hit;
                 wallFound = true;
                 break;
@@ -675,8 +676,9 @@ public class PlayerController : NetworkBehaviour
         // Немного сдвигаем точку старта, чтобы снаряд не появлялся внутри самого игрока
         Vector3 spawnPos = transform.position + Vector3.up * 1.5f + lookRot * Vector3.forward * 1f;
         
-        // Спавним снаряд на сервере
-        NetworkObject projObj = Runner.Spawn(projectilePrefab, spawnPos, lookRot, Object.InputAuthority);
+        // Спавним снаряд на сервере без InputAuthority, 
+        // чтобы NetworkTransform просто плавно интерполировал его на всех клиентах, убирая дёргания.
+        NetworkObject projObj = Runner.Spawn(projectilePrefab, spawnPos, lookRot, PlayerRef.None);
 
         // Передаем снаряду владельца, урон и скорость
         Projectile projScript = projObj.GetComponent<Projectile>();
