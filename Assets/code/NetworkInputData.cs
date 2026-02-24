@@ -30,8 +30,9 @@ public static class NetworkInputButtons
     public const int Jump   = 0;   // Space
     public const int Dash   = 1;   // Left Shift
     public const int Crouch = 2;   // Left Ctrl
-    public const int Fire   = 3;   // Left Mouse
-    public const int Aim    = 4;   // Right Mouse
+    public const int PrimaryAttack = 3;   // ЛКМ (Обычная атака: Дальняя или Ближняя)
+    public const int SecondaryAttack = 4; // Q (Способность/Альтернативная мили атака)
     public const int Reload = 5;   // R
     public const int Mantle = 6;   // Space + W/A/D (особый флаг)
+    public const int Interact = 7; // E (Подбор оружия)
 }

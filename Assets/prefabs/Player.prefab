@@ -187,6 +187,22 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   camFollowSpeed: 12
+  baseHpNone: 100
+  baseHpSwordsman: 150
+  baseHpArcher: 100
+  baseHpMage: 80
+  baseHpTank: 300
+  meleeRange: 2
+  meleeRadius: 1.5
+  meleeDamage: 25
+  meleeCooldown: 0.5
+  rangedDamage: 15
+  rangedCooldown: 1
+  projectilePrefab:
+    RawGuidValue: 22a4eeff4eff1bd409c47a910506ba54
+  _CurrentClass: 0
+  _MaxHP: 0
+  _CurrentHP: 0
 --- !u!114 &-305474684081347197
 MonoBehaviour:
   m_ObjectHideFlags: 0

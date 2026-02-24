@@ -2,6 +2,15 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using Fusion;
 
+public enum PlayerClass
+{
+    None = 0,
+    Swordsman,
+    Archer,
+    Mage,
+    Tank
+}
+
 /// <summary>
 /// 3D PlayerController — камера Fortnite/TPS стиль (New Input System)
 /// ─────────────────────────────────────────────────────────────────
@@ -58,6 +67,23 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private LayerMask camCollisionMask = ~0;
     [SerializeField] private float camFollowSpeed = 12f;
 
+    [Header("── Класс и Здоровье ─────────────────────")]
+    [SerializeField] private int baseHpNone = 100;
+    [SerializeField] private int baseHpSwordsman = 150;
+    [SerializeField] private int baseHpArcher = 100;
+    [SerializeField] private int baseHpMage = 80;
+    [SerializeField] private int baseHpTank = 300;
+
+    [Header("── Атаки Мечника (Swordsman) ──────────")]
+    [SerializeField] private float meleeRange = 2f;
+    [SerializeField] private float meleeRadius = 1.5f;
+    [SerializeField] private int meleeDamage = 25;
+    [SerializeField] private float meleeCooldown = 0.5f;
+    [SerializeField] private int rangedDamage = 15;
+    [SerializeField] private float rangedCooldown = 3.0f;
+    [Tooltip("Префаб снаряда (кинжал/волна), должен иметь NetworkObject")]
+    [SerializeField] private NetworkPrefabRef projectilePrefab;
+
     // ══════════════════════════════════════════════════════════════
     //  ПРИВАТНОЕ СОСТОЯНИЕ И СЕТЬ
     // ══════════════════════════════════════════════════════════════
@@ -69,6 +95,11 @@ public class PlayerController : NetworkBehaviour
     private Mouse    _mouse;
 
     [Networked] private Vector3 _velocity { get; set; }
+
+    // Характеристики класса
+    [Networked] public PlayerClass CurrentClass { get; private set; }
+    [Networked] public int MaxHP { get; private set; }
+    [Networked] public int CurrentHP { get; private set; }
 
     // Характеристики CC
     private float   _standHeight;
@@ -95,6 +126,10 @@ public class PlayerController : NetworkBehaviour
     [Networked] private NetworkButtons _prevButtons { get; set; }
     private NetworkInputData _currentInput;
     private NetworkButtons   _currentPressed;
+
+    // Кулдауны атак
+    [Networked] private float _primaryAttackTimer { get; set; }
+    [Networked] private float _secondaryAttackTimer { get; set; }
 
     // Камера — локально
     private float   _yaw;
@@ -147,7 +182,31 @@ public class PlayerController : NetworkBehaviour
         if (HasStateAuthority)
         {
             _dashCharges = maxDashCharges;
+            
+            // Задаем базовый класс при спавне (None)
+            ChangeClass(PlayerClass.None);
         }
+    }
+
+    public void ChangeClass(PlayerClass newClass)
+    {
+        // Менять классы может только сервер (StateAuthority)
+        if (!HasStateAuthority) return;
+
+        CurrentClass = newClass;
+
+        // Настраиваем ХП в зависимости от класса
+        switch (newClass)
+        {
+            case PlayerClass.None:      MaxHP = baseHpNone; break;
+            case PlayerClass.Swordsman: MaxHP = baseHpSwordsman; break;
+            case PlayerClass.Archer:    MaxHP = baseHpArcher; break;
+            case PlayerClass.Mage:      MaxHP = baseHpMage; break;
+            case PlayerClass.Tank:      MaxHP = baseHpTank; break;
+        }
+
+        // Полностью восстанавливаем ХП при смене класса (или можно сделать % отношение)
+        CurrentHP = MaxHP;
     }
 
     public override void Despawned(NetworkRunner runner, bool hasState)
@@ -172,6 +231,13 @@ public class PlayerController : NetworkBehaviour
         data.Buttons.Set(NetworkInputButtons.Jump,   _kb.spaceKey.isPressed);
         data.Buttons.Set(NetworkInputButtons.Crouch, _kb.leftCtrlKey.isPressed);
         data.Buttons.Set(NetworkInputButtons.Dash,   _kb.leftShiftKey.isPressed);
+        data.Buttons.Set(NetworkInputButtons.SecondaryAttack, _kb.qKey.isPressed);
+        data.Buttons.Set(NetworkInputButtons.Interact, _kb.eKey.isPressed);
+
+        if (_mouse != null)
+        {
+            data.Buttons.Set(NetworkInputButtons.PrimaryAttack, _mouse.leftButton.isPressed);
+        }
 
         bool movPressed = (h != 0 || v != 0);
         data.Buttons.Set(NetworkInputButtons.Mantle, _kb.spaceKey.isPressed && movPressed);
@@ -279,6 +345,10 @@ public class PlayerController : NetworkBehaviour
             _currentPressed = input.Buttons.GetPressed(_prevButtons);
             _prevButtons    = input.Buttons;
 
+            // Обновляем таймеры атак (уменьшаем на время кадра)
+            if (_primaryAttackTimer > 0f)   _primaryAttackTimer -= Runner.DeltaTime;
+            if (_secondaryAttackTimer > 0f) _secondaryAttackTimer -= Runner.DeltaTime;
+
             // ── КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: МИКРО-ДЁРГАНИЯ ────────
             // Применяем поворот для других игроков (сервер транслирует это),
             // но локальный игрок НЕ перезаписывает свой transform в FUN!
@@ -291,6 +361,8 @@ public class PlayerController : NetworkBehaviour
             HandleCrouch();
             HandleDashRecharge();
             HandleDash();
+            HandleAttacks();
+            HandleInteract();
 
             if (_isMantling)
                 HandleMantle();
@@ -491,6 +563,192 @@ public class PlayerController : NetworkBehaviour
             }
         }
         else _dashCooldownTimer = 0f;
+    }
+
+    private void HandleAttacks()
+    {
+        bool primaryPressed   = _currentPressed.IsSet(NetworkInputButtons.PrimaryAttack);
+        bool secondaryPressed = _currentPressed.IsSet(NetworkInputButtons.SecondaryAttack);
+
+        if (primaryPressed && _primaryAttackTimer <= 0f)
+        {
+            _primaryAttackTimer = GetPrimaryCooldown();
+
+            switch (CurrentClass)
+            {
+                case PlayerClass.Swordsman: 
+                    PerformMeleeAttack(meleeDamage, meleeRange, meleeRadius);
+                    break;
+                case PlayerClass.Archer:
+                    break;
+                case PlayerClass.Mage:
+                    break;
+                case PlayerClass.Tank:
+                    break;
+            }
+        }
+
+        if (secondaryPressed && _secondaryAttackTimer <= 0f)
+        {
+            _secondaryAttackTimer = GetSecondaryCooldown();
+
+            switch (CurrentClass)
+            {
+                case PlayerClass.Swordsman: 
+                    PerformProjectileAttack();
+                    break;
+                case PlayerClass.Archer:
+                    break;
+                case PlayerClass.Mage:
+                    break;
+                case PlayerClass.Tank:
+                    break;
+            }
+        }
+    }
+
+    private float GetPrimaryCooldown()
+    {
+        if (CurrentClass == PlayerClass.Swordsman) return meleeCooldown;
+        return 0.5f; // дефолт
+    }
+
+    private float GetSecondaryCooldown()
+    {
+        if (CurrentClass == PlayerClass.Swordsman) return rangedCooldown;
+        return 1.0f; // дефолт
+    }
+
+    // ── Логика атак Мечника ──────────────────────────────────────
+
+    private void PerformMeleeAttack(int damage, float range, float radius)
+    {
+        // Атака происходит только на сервере
+        if (!HasStateAuthority) return;
+
+        Quaternion lookRot = Quaternion.Euler(0f, _currentInput.LookAngles.y, 0f);
+        Vector3 origin = transform.position + Vector3.up * 1f; // уровень груди
+        Vector3 forward = lookRot * Vector3.forward;
+        Vector3 attackPoint = origin + forward * range;
+
+        // Ищем всех коллайдеров в радиусе удара
+        Collider[] hits = Physics.OverlapSphere(attackPoint, radius);
+
+        foreach (var hit in hits)
+        {
+            // Проверяем, попали ли мы по другому игроку
+            PlayerController target = hit.GetComponent<PlayerController>();
+            
+            if (target != null && target != this)
+            {
+                // Наносим урон
+                target.TakeDamage(damage);
+                Debug.Log($"[{Object.Id}] Hit {target.Object.Id} with sword for {damage} damage!");
+            }
+        }
+    }
+
+    private void PerformProjectileAttack()
+    {
+        if (!HasStateAuthority) return;
+
+        // Если префаб не задан, просто выводим лог
+        if (projectilePrefab == NetworkPrefabRef.Empty)
+        {
+            Debug.LogWarning("Снаряд для Мечника (Q) не задан в инспекторе!");
+            return;
+        }
+
+        // КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Используем LookAngles.x (Pitch) и LookAngles.y (Yaw)
+        // Теперь кинжал летит вверх/вниз в зависимости от того, куда смотрит камера
+        Quaternion lookRot = Quaternion.Euler(_currentInput.LookAngles.x, _currentInput.LookAngles.y, 0f);
+        
+        // Немного сдвигаем точку старта, чтобы снаряд не появлялся внутри самого игрока
+        Vector3 spawnPos = transform.position + Vector3.up * 1.5f + lookRot * Vector3.forward * 1f;
+        
+        // Спавним снаряд на сервере
+        NetworkObject projObj = Runner.Spawn(projectilePrefab, spawnPos, lookRot, Object.InputAuthority);
+
+        // Передаем снаряду владельца, урон и скорость
+        Projectile projScript = projObj.GetComponent<Projectile>();
+        if (projScript != null)
+        {
+            // Здесь снаряд "бросается" вперед
+            projScript.Init(Object.InputAuthority, rangedDamage, lookRot * Vector3.forward, 25f);
+        }
+
+        Debug.Log("Swordsman: Threw a projectile!");
+    }
+
+    private void HandleInteract()
+    {
+        if (_currentPressed.IsSet(NetworkInputButtons.Interact))
+        {
+            if (!HasStateAuthority) 
+            {
+                Debug.Log("[Client] E pressed, but only Server handles pickups.");
+                return;
+            }
+
+            // Сфера радиусом 2м для поиска предметов перед собой
+            Vector3 origin = transform.position + Vector3.up * 1f;
+            Collider[] hits = Physics.OverlapSphere(origin, 2f);
+
+            Debug.Log($"[Server] E pressed! Searching in 2m radius... Found {hits.Length} colliders.");
+
+            foreach (var hit in hits)
+            {
+                var pickup = hit.GetComponent<WeaponPickup>();
+                // Если нашли объект оружия
+                if (pickup != null)
+                {
+                    Debug.Log($"[Server] Found WeaponPickup on {hit.name}!");
+                    
+                    if (pickup.Object == null)
+                    {
+                        Debug.LogWarning($"[Server] {hit.name} DOES NOT have a NetworkObject properly initialized. Cannot destroy it over network.");
+                        // Для теста, даже если нет NetworkObject, дадим оружие и уничтожим локально
+                        ChangeClass(pickup.ClassToGive);
+                        Destroy(pickup.gameObject);
+                        break;
+                    }
+                    else if (pickup.Object.IsValid)
+                    {
+                        ChangeClass(pickup.ClassToGive);
+                        Debug.Log($"[{Object.Id}] Picked up {pickup.ClassToGive} weapon!");
+                        Runner.Despawn(pickup.Object);
+                        break; 
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[Server] {hit.name} NetworkObject is NOT valid (not spawned?).");
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Система Урона ────────────────────────────────────────────
+
+    public void TakeDamage(int amount)
+    {
+        if (!HasStateAuthority) return;
+
+        CurrentHP -= amount;
+        
+        if (CurrentHP <= 0)
+        {
+            CurrentHP = 0;
+            Debug.Log($"Player {Object.Id} DIED!");
+            // TODO: Логика смерти (респаун, анимация)
+            
+            // Временно: респавним игрока чуть выше
+            _velocity = Vector3.zero;
+            _cc.enabled = false;
+            transform.position = new Vector3(0, 5, 0);
+            _cc.enabled = true;
+            CurrentHP = MaxHP;
+        }
     }
 
     private void HandleCrouch()
