@@ -32,6 +32,8 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
     [SerializeField] private GameObject  lobbyPanel;
     [SerializeField] private TMP_InputField roomNameInput;
+    [Tooltip("Выпадающий список для выбора региона")]
+    [SerializeField] private TMP_Dropdown regionDropdown;
     [SerializeField] private Button      hostButton;
     [SerializeField] private Button      joinButton;
     [SerializeField] private Button      disconnectButton;
@@ -53,6 +55,13 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         if (hostButton)       hostButton.onClick.AddListener(OnClickHost);
         if (joinButton)       joinButton.onClick.AddListener(OnClickJoin);
         if (disconnectButton) disconnectButton.onClick.AddListener(OnClickDisconnect);
+
+        if (regionDropdown != null)
+        {
+            regionDropdown.ClearOptions();
+            // "Auto" будет использовать ближайший сервер с наилучшим пингом
+            regionDropdown.AddOptions(new List<string> { "Auto", "eu", "us", "asia", "ru", "sa" });
+        }
 
         ShowLobby(true);
         SetStatus("Введи название комнаты и нажми Host или Join");
@@ -97,18 +106,46 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
     private async void StartGame(GameMode mode, string roomName)
     {
-        // Check if there is already a runner, if so dont add another, just use it or clean it up
-        _runner = gameObject.GetComponent<NetworkRunner>();
-        if (_runner == null) {
-            _runner = gameObject.AddComponent<NetworkRunner>();
+        // Блокируем кнопки на время подключения
+        if (hostButton) hostButton.interactable = false;
+        if (joinButton) joinButton.interactable = false;
+
+        // Удаляем старый Session, если он завис после неудачного входа
+        var oldSession = this.transform.Find("Session");
+        if (oldSession != null)
+        {
+            Destroy(oldSession.gameObject);
         }
-        
+
+        if (_runner != null)
+        {
+            _runner.Shutdown();
+            _runner = null;
+        }
+
+        // Создаем дочерний GameObject специально для Runner,
+        // чтобы избежать багов с двойными компонентами при переподключении.
+        var runnerGo = new GameObject("Session");
+        runnerGo.transform.SetParent(this.transform);
+
+        _runner = runnerGo.AddComponent<NetworkRunner>();
         _runner.ProvideInput = true;   // этот клиент отправляет Input
 
-        // Same for SceneManager, avoid adding duplicate components
-        var sceneManager = gameObject.GetComponent<NetworkSceneManagerDefault>();
-        if (sceneManager == null) {
-            sceneManager = gameObject.AddComponent<NetworkSceneManagerDefault>();
+        var sceneManager = runnerGo.AddComponent<NetworkSceneManagerDefault>();
+
+        // Настройка региона
+        var appSettings = Fusion.Photon.Realtime.PhotonAppSettings.Global.AppSettings.GetCopy();
+        if (regionDropdown != null)
+        {
+            string selectedRegion = regionDropdown.options[regionDropdown.value].text;
+            if (selectedRegion != "Auto")
+            {
+                appSettings.FixedRegion = selectedRegion;
+            }
+            else
+            {
+                appSettings.FixedRegion = ""; // Очищаем для работы Best Region
+            }
         }
 
         var args = new StartGameArgs
@@ -119,10 +156,19 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
             // Убрали загрузку сцены через (Scene = ...).
             // Запуск сети произойдёт прямо в текущей сцене без её перезагрузки.
             // Это спасает запечённый свет (тени) и скайбокс от "синего экрана".
-            SceneManager   = sceneManager
+            SceneManager   = sceneManager,
+            CustomPhotonAppSettings = appSettings
         };
 
+        // Т.к. Runner теперь на дочернем объекте, ему нужно явно указать, 
+        // где находятся колбеки (на этом скрипте NetworkManager)
+        _runner.AddCallbacks(this);
+
         var result = await _runner.StartGame(args);
+
+        // Разблокируем кнопки
+        if (hostButton) hostButton.interactable = true;
+        if (joinButton) joinButton.interactable = true;
 
         if (result.Ok)
         {
@@ -134,14 +180,10 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         else
         {
             SetStatus($"Ошибка подключения: {result.ShutdownReason}");
-            // Destroy only if we actually added it
-            if (_runner != null) {
-                Destroy(_runner);
+            if (_runner != null) 
+            {
+                _runner.Shutdown();
                 _runner = null;
-            }
-            sceneManager = gameObject.GetComponent<NetworkSceneManagerDefault>();
-            if (sceneManager != null) {
-                Destroy(sceneManager);
             }
         }
     }
@@ -188,10 +230,14 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         ShowLobby(true);
         _spawnedPlayers.Clear();
 
-        if (_runner != null)
+        if (_runner == runner)
         {
-            Destroy(_runner);
             _runner = null;
+        }
+
+        if (runner != null && runner.gameObject != null && runner.gameObject.name == "Session")
+        {
+            Destroy(runner.gameObject);
         }
     }
 
