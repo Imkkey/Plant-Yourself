@@ -66,6 +66,9 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private LayerMask camCollisionMask = ~0;
     [SerializeField] private float camFollowSpeed = 12f;
 
+    [Header("── UI Игрока ──────────────────────────")]
+    [SerializeField] private TMPro.TMP_Text nameTag;
+
     [Header("── Камера (Растение) ──────────────")]
     [SerializeField] private float treeCamDistance = 12f;
 
@@ -76,6 +79,8 @@ public class PlayerController : NetworkBehaviour
     private PlantGrower _grower;
     private Keyboard _kb;
     private Mouse    _mouse;
+
+    [Networked] public NetworkString<_32> PlayerName { get; set; }
 
     [Networked] private Vector3 _velocity { get; set; }
     [Networked] private NetworkBool _isGrounded { get; set; }
@@ -157,6 +162,8 @@ public class PlayerController : NetworkBehaviour
             {
                 PlantSelectionUI.Instance.Show();
             }
+
+            RPC_SetPlayerName(NetworkManager.LocalPlayerName);
         }
 
         if (HasStateAuthority)
@@ -170,6 +177,12 @@ public class PlayerController : NetworkBehaviour
     public override void Despawned(NetworkRunner runner, bool hasState)
     {
         if (Local == this) Local = null;
+    }
+
+    [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
+    public void RPC_SetPlayerName(NetworkString<_32> name)
+    {
+        PlayerName = name;
     }
 
     // Собираем локальный ввод. Вызывается из NetworkManager.OnInput
@@ -258,6 +271,26 @@ public class PlayerController : NetworkBehaviour
         {
             _grower.CurrentPlant = plant;
             _grower.IsPlantSelected = true;
+        }
+    }
+
+    public override void Render()
+    {
+        if (nameTag != null)
+        {
+            if (HasInputAuthority)
+            {
+                if (nameTag.gameObject.activeSelf) nameTag.gameObject.SetActive(false);
+                return;
+            }
+
+            nameTag.text = PlayerName.ToString();
+
+            if (Camera.main != null && nameTag.gameObject.activeInHierarchy)
+            {
+                // Поворачиваем имя так, чтобы оно смотрело на камеру (разворачиваем на 180 от камеры, чтобы текст не был зеркальным)
+                nameTag.transform.rotation = Quaternion.LookRotation(nameTag.transform.position - Camera.main.transform.position);
+            }
         }
     }
 

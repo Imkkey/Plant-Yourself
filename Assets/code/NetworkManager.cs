@@ -32,6 +32,7 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
     [SerializeField] private GameObject  lobbyPanel;
     [SerializeField] private TMP_InputField roomNameInput;
+    [SerializeField] private TMP_InputField nicknameInput;
     [SerializeField] private Button      hostButton;
     [SerializeField] private Button      joinButton;
     [SerializeField] private Button      disconnectButton;
@@ -39,6 +40,7 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
     // ── Внутренние переменные ────────────────────────────────────
 
+    public static string LocalPlayerName = "Player";
     private NetworkRunner _runner;
 
     // Хранит спавненных игроков: PlayerRef → объект
@@ -54,6 +56,12 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         if (joinButton)       joinButton.onClick.AddListener(OnClickJoin);
         if (disconnectButton) disconnectButton.onClick.AddListener(OnClickDisconnect);
 
+        if (PlayerPrefs.HasKey("SavedNickname") && nicknameInput != null)
+        {
+            nicknameInput.text = PlayerPrefs.GetString("SavedNickname");
+            LocalPlayerName = nicknameInput.text;
+        }
+
         ShowLobby(true);
         SetStatus("Введи название комнаты и нажми Host или Join");
     }
@@ -62,6 +70,7 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
     private void OnClickHost()
     {
+        SaveNickname();
         string room = GetRoomName();
         SetStatus($"Создаем сервер (Host Mode): {room}...");
         StartGame(GameMode.Host, room);
@@ -69,6 +78,7 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
     private void OnClickJoin()
     {
+        SaveNickname();
         string room = GetRoomName();
         SetStatus($"Подключаемся к серверу (Client Mode): {room}...");
         StartGame(GameMode.Client, room);
@@ -91,6 +101,23 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         if (roomNameInput != null && !string.IsNullOrEmpty(roomNameInput.text))
             return roomNameInput.text.Trim();
         return defaultRoomName;
+    }
+
+    private void SaveNickname()
+    {
+        if (nicknameInput != null && !string.IsNullOrWhiteSpace(nicknameInput.text))
+        {
+            LocalPlayerName = nicknameInput.text.Trim();
+        }
+        else
+        {
+            LocalPlayerName = "Player " + UnityEngine.Random.Range(1000, 9999);
+            if (nicknameInput != null)
+                nicknameInput.text = LocalPlayerName;
+        }
+
+        PlayerPrefs.SetString("SavedNickname", LocalPlayerName);
+        PlayerPrefs.Save();
     }
 
     // ── Запуск сессии ────────────────────────────────────────────
