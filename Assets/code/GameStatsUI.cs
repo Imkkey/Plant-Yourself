@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 using TMPro;
 using Fusion;
 
@@ -7,6 +8,10 @@ public class GameStatsUI : MonoBehaviour
     [Header("UI Элемент")]
     [Tooltip("Перетащи сюда TextMeshPro - Text для вывода статистики")]
     [SerializeField] private TMP_Text statsText;
+    
+    [Header("Шкала Удобрения")]
+    [Tooltip("Перетащи сюда Slider, который будет служить шкалой удобрения")]
+    [SerializeField] private Slider fertilizerSlider;
     
     [Header("Настройки")]
     [SerializeField] private string gameVersion = "1.0 Alpha";
@@ -21,6 +26,14 @@ public class GameStatsUI : MonoBehaviour
 
     private void Update()
     {
+        // Плавное обновление шкалы удобрения (каждый кадр)
+        if (fertilizerSlider != null && PlayerController.Local != null)
+        {
+            // Плавно меняем значение слайдера для красоты (от 0 до 1, так как Fertilizer от 0 до 100)
+            float targetValue = PlayerController.Local.Fertilizer / 100f;
+            fertilizerSlider.value = Mathf.Lerp(fertilizerSlider.value, targetValue, Time.deltaTime * 10f);
+        }
+
         // Подсчет FPS
         _frameCount++;
         _deltaTime += Time.unscaledDeltaTime;
@@ -43,7 +56,7 @@ public class GameStatsUI : MonoBehaviour
         // Ищем раннер (если он запущен или мы переподключились)
         if (_runner == null || !_runner.IsRunning)
         {
-            _runner = FindFirstObjectByType<NetworkRunner>();
+            _runner = FindObjectOfType<NetworkRunner>();
         }
 
         string pingStr = "Offline";
@@ -73,13 +86,6 @@ public class GameStatsUI : MonoBehaviour
         // Формируем красивый текст с поддержкой цветов HTML
         string text = $"<color=#00FF00><b>FPS:</b></color> {_fps:0}\n";
         text += $"<color=#00FFFF><b>Ping:</b></color> {pingStr}\n";
-
-        if (PlayerController.Local != null)
-        {
-            float fert = PlayerController.Local.Fertilizer;
-            text += $"<color=#32CD32><b>Удобрение:</b></color> {Mathf.RoundToInt(fert)}%\n";
-        }
-
         text += $"<color=#FFA500><b>Room:</b></color> {roomStr}\n";
         text += $"<color=#FFFF00><b>Region:</b></color> {regionStr}\n";
         text += $"<color=#FF69B4><b>Players:</b></color> {playersStr}\n";
