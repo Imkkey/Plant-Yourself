@@ -401,6 +401,63 @@ public class PlayerController : NetworkBehaviour
             if ((jumpPressed || (jumpHeld && isMoving)) && TryStartMantle()) return;
         }
 
+        bool isClimbing = false;
+        Vector3 vineCentroid = Vector3.zero;
+
+        if (!_isCrouching) 
+        {
+            // Увеличен радиус капсулы до 0.9f, чтобы надежно цеплять лозу даже если коллайдеры отталкивают игрока
+            Collider[] hits = Physics.OverlapCapsule(transform.position, transform.position + Vector3.up * 1.8f, 0.9f);
+            foreach (var hit in hits)
+            {
+                VineBlock vine = hit.GetComponent<VineBlock>();
+                if (vine == null) vine = hit.GetComponentInParent<VineBlock>();
+
+                if (vine != null)
+                {
+                    isClimbing = true;
+                    vineCentroid = hit.transform.position;
+                    break;
+                }
+            }
+        }
+
+        if (isClimbing)
+        {
+            Vector3 vel = _velocity;
+            float climbSpeed = speed * 1.2f; // Чуть быстрее лезем
+
+            // Ползем вверх/вниз если нажимаем W или S
+            vel.y = input.y * climbSpeed;
+            // Убираем боковую инерцию при падении
+            vel.x = 0;
+            vel.z = 0;
+
+            // Разрешаем стрейфить по сторонам лозы (A/D)
+            Vector3 sideMove = netRight * input.x * climbSpeed * 0.6f;
+
+            // Легонько притягиваем игрока к лозе, чтобы он не отлипал от стены
+            Vector3 pushToVine = (vineCentroid - transform.position);
+            pushToVine.y = 0;
+            sideMove += pushToVine.normalized * 2.0f;
+
+            if (_currentPressed.IsSet(NetworkInputButtons.Jump))
+            {
+                // Отскок от лозы
+                vel.y = Mathf.Sqrt(jumpHeight * -1.5f * gravity);
+                vel += -netForward * speed * 1.5f;
+                _velocity = vel;
+                _cc.Move(_velocity * Runner.DeltaTime);
+                _isGrounded = _cc.isGrounded;
+                return;
+            }
+
+            _velocity = vel;
+            _cc.Move((sideMove + Vector3.up * vel.y) * Runner.DeltaTime);
+            _isGrounded = _cc.isGrounded;
+            return;
+        }
+
         // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Используем занетворканый результат проверки земли (_isGrounded).
         // Иначе при сетевом откате (Rollback) Unity's _cc.isGrounded дает сбой и прыжок "съедается", вызывая дёргания.
         if (_isGrounded)
@@ -746,13 +803,15 @@ public class PlayerController : NetworkBehaviour
                 {
                     // Пол есть, ползем вперед (вдоль пола до края)
                     growDir = forward;
-                    spawnRot = Quaternion.LookRotation(Vector3.up, forward); 
+                    // Y (up) смотрит вверх (от пола), Z (forward) смотрит вперед
+                    spawnRot = Quaternion.LookRotation(forward, Vector3.up); 
                 }
                 else
                 {
                     // Обрыв! Ползем вниз
                     growDir = Vector3.down;
-                    spawnRot = Quaternion.LookRotation(-forward, Vector3.up); 
+                    // Y (up) смотрит назад (от воображаемой стены обрыва), Z (forward) смотрит вниз
+                    spawnRot = Quaternion.LookRotation(Vector3.down, -forward); 
                 }
             }
             else // Oak
@@ -816,8 +875,8 @@ public class PlayerController : NetworkBehaviour
                                         toLast = (growDir == Vector3.down) ? Vector3.up : -growDir.normalized;
                                     }
 
-                                    // Поворачиваем лозу: Z (самая плоская сторона) смотрит ОТ стены, а Y (длина) тянется назад к прошлому блоку для соединения!
-                                    spawnRot = Quaternion.LookRotation(surfaceNormal, toLast);
+                                    // Поворачиваем лозу: Y (up) смотрит ОТ стены, а Z (forward) тянется назад к прошлому блоку для соединения!
+                                    spawnRot = Quaternion.LookRotation(toLast, surfaceNormal);
                                 }
                             }
                         }
@@ -831,20 +890,25 @@ public class PlayerController : NetworkBehaviour
                             NetworkPrefabRef prefabToSpawn = CurrentPlant == PlantType.Vine ? vineBlockPrefab : oakBlockPrefab;
                             if (prefabToSpawn != NetworkPrefabRef.Empty)
                             {
-                                // Задаем TargetScale, чтобы блоки лозы растягивались по своей оси Y и перекрывали пустоты
+                                // Задаем TargetScale, чтобы блоки лозы растягивались по своей оси Z и перекрывали пустоты
                                 Vector3 spawnScale = Vector3.one;
                                 if (CurrentPlant == PlantType.Vine)
                                 {
                                     float distToLast = Vector3.Distance(_lastBlockPos, _growthHeadPos);
-                                    // Делаем длину блока в 1.5 раза больше расстояния между ними, чтобы они входили друг в друга (без просечек)
-                                    spawnScale = new Vector3(1f, Mathf.Max(1.0f, distToLast * 2.5f), 1f);
+                                    // Делаем длину блока (теперь ось Z) в 2.5 раза больше расстояния между ними
+                                    spawnScale = new Vector3(1f, 1f, Mathf.Max(1.0f, distToLast * 2.5f));
                                 }
 
                                 NetworkObject obj = Runner.Spawn(prefabToSpawn, _growthHeadPos, spawnRot, Object.InputAuthority, (runner, no) => {
-                                    OakBlock blockScript = no.GetComponent<OakBlock>();
-                                    if (blockScript != null)
+                                    if (CurrentPlant == PlantType.Vine)
                                     {
-                                        blockScript.TargetScale = spawnScale;
+                                        VineBlock vineScript = no.GetComponent<VineBlock>();
+                                        if (vineScript != null) vineScript.TargetScale = spawnScale;
+                                    }
+                                    else
+                                    {
+                                        OakBlock oakScript = no.GetComponent<OakBlock>();
+                                        if (oakScript != null) oakScript.TargetScale = spawnScale;
                                     }
                                 });
                                 

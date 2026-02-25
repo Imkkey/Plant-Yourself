@@ -2,9 +2,9 @@ using UnityEngine;
 using Fusion;
 
 /// <summary>
-/// Простой скрипт для блока дуба, который спавнится при росте.
+/// Скрипт для блока лозы, который спавнится при росте.
 /// </summary>
-public class OakBlock : NetworkBehaviour
+public class VineBlock : NetworkBehaviour
 {
     [Networked] public Vector3 TargetScale { get; set; }
 
@@ -12,12 +12,13 @@ public class OakBlock : NetworkBehaviour
     {
         if (TargetScale == Vector3.zero) TargetScale = Vector3.one;
 
-        transform.localScale = TargetScale * 0.1f;
+        // Начальный масштаб для анимации появления
+        transform.localScale = new Vector3(TargetScale.x, TargetScale.y, 0.1f);
     }
 
     public override void FixedUpdateNetwork()
     {
+        // Плавное увеличение масштаба
         transform.localScale = Vector3.Lerp(transform.localScale, TargetScale, Runner.DeltaTime * 10f);
     }
 }
-
