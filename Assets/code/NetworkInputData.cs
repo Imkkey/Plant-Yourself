@@ -29,6 +29,8 @@ public static class NetworkInputButtons
 {
     public const int Jump   = 0;   // Space
     public const int Action = 1;   // F key
-    public const int Dash   = 2;   // Left Shift (can be used for speed boost)
+    public const int Dash   = 2;   // Left Shift
     public const int Crouch = 3;   // Left Ctrl
+    public const int PlantOak = 4; // '1' key
+    public const int PlantVine = 5; // '2' key
 }

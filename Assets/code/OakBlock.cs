@@ -6,17 +6,18 @@ using Fusion;
 /// </summary>
 public class OakBlock : NetworkBehaviour
 {
+    [Networked] public Vector3 TargetScale { get; set; }
+
     public override void Spawned()
     {
+        if (TargetScale == Vector3.zero) TargetScale = Vector3.one;
+
         // Можно добавить анимацию появления (Scale up)
-        transform.localScale = Vector3.one * 0.1f;
+        transform.localScale = TargetScale * 0.1f;
     }
 
     public override void FixedUpdateNetwork()
     {
-        if (transform.localScale.x < 1f)
-        {
-            transform.localScale = Vector3.Lerp(transform.localScale, Vector3.one, Runner.DeltaTime * 5f);
-        }
+        transform.localScale = Vector3.Lerp(transform.localScale, TargetScale, Runner.DeltaTime * 10f);
     }
 }

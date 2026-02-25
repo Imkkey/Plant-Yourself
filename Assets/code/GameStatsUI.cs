@@ -64,6 +64,12 @@ public class GameStatsUI : MonoBehaviour
         string roomStr = "N/A";
         string playersStr = "0";
         string modeStr = "Offline";
+        string plantStr = "None";
+
+        if (PlayerController.Local != null)
+        {
+            plantStr = PlayerController.Local.CurrentPlant.ToString();
+        }
 
         if (_runner != null && _runner.IsRunning)
         {
@@ -90,6 +96,7 @@ public class GameStatsUI : MonoBehaviour
         text += $"<color=#FFFF00><b>Region:</b></color> {regionStr}\n";
         text += $"<color=#FF69B4><b>Players:</b></color> {playersStr}\n";
         text += $"<color=#ADD8E6><b>Mode:</b></color> {modeStr}\n";
+        text += $"<color=#00FA9A><b>Plant:</b></color> {plantStr}\n";
         text += $"<color=#AAAAAA><b>Version:</b></color> {gameVersion}";
 
         statsText.text = text;
