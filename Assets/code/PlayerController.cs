@@ -680,14 +680,6 @@ public class PlayerController : NetworkBehaviour
         // чтобы NetworkTransform просто плавно интерполировал его на всех клиентах, убирая дёргания.
         NetworkObject projObj = Runner.Spawn(projectilePrefab, spawnPos, lookRot, PlayerRef.None);
 
-        // Передаем снаряду владельца, урон и скорость
-        Projectile projScript = projObj.GetComponent<Projectile>();
-        if (projScript != null)
-        {
-            // Здесь снаряд "бросается" вперед
-            projScript.Init(Object.InputAuthority, rangedDamage, lookRot * Vector3.forward, 25f);
-        }
-
         Debug.Log("Swordsman: Threw a projectile!");
     }
 
@@ -707,35 +699,7 @@ public class PlayerController : NetworkBehaviour
 
             Debug.Log($"[Server] E pressed! Searching in 2m radius... Found {hits.Length} colliders.");
 
-            foreach (var hit in hits)
-            {
-                var pickup = hit.GetComponent<WeaponPickup>();
-                // Если нашли объект оружия
-                if (pickup != null)
-                {
-                    Debug.Log($"[Server] Found WeaponPickup on {hit.name}!");
-                    
-                    if (pickup.Object == null)
-                    {
-                        Debug.LogWarning($"[Server] {hit.name} DOES NOT have a NetworkObject properly initialized. Cannot destroy it over network.");
-                        // Для теста, даже если нет NetworkObject, дадим оружие и уничтожим локально
-                        ChangeClass(pickup.ClassToGive);
-                        Destroy(pickup.gameObject);
-                        break;
-                    }
-                    else if (pickup.Object.IsValid)
-                    {
-                        ChangeClass(pickup.ClassToGive);
-                        Debug.Log($"[{Object.Id}] Picked up {pickup.ClassToGive} weapon!");
-                        Runner.Despawn(pickup.Object);
-                        break; 
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"[Server] {hit.name} NetworkObject is NOT valid (not spawned?).");
-                    }
-                }
-            }
+            // Логика подбора WeaponPickup была удалена
         }
     }
 
