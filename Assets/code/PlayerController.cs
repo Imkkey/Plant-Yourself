@@ -2,13 +2,12 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using Fusion;
 
-public enum PlayerClass
+public enum PlantType
 {
     None = 0,
-    Swordsman,
-    Archer,
-    Mage,
-    Tank
+    Oak,
+    Vine,
+    Chamomile
 }
 
 /// <summary>
@@ -67,22 +66,16 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private LayerMask camCollisionMask = ~0;
     [SerializeField] private float camFollowSpeed = 12f;
 
-    [Header("── Класс и Здоровье ─────────────────────")]
-    [SerializeField] private int baseHpNone = 100;
-    [SerializeField] private int baseHpSwordsman = 150;
-    [SerializeField] private int baseHpArcher = 100;
-    [SerializeField] private int baseHpMage = 80;
-    [SerializeField] private int baseHpTank = 300;
+    [Header("── Камера (Дерево) ──────────────")]
+    [SerializeField] private float treeCamDistance = 12f;
 
-    [Header("── Атаки Мечника (Swordsman) ──────────")]
-    [SerializeField] private float meleeRange = 2f;
-    [SerializeField] private float meleeRadius = 1.5f;
-    [SerializeField] private int meleeDamage = 25;
-    [SerializeField] private float meleeCooldown = 0.5f;
-    [SerializeField] private int rangedDamage = 15;
-    [SerializeField] private float rangedCooldown = 3.0f;
-    [Tooltip("Префаб снаряда (кинжал/волна), должен иметь NetworkObject")]
-    [SerializeField] private NetworkPrefabRef projectilePrefab;
+    [Header("── Параметры Растения ────────────────────")]
+    [SerializeField] private float growthSpeed = 5f;
+    [SerializeField] private float maxGrowthDistance = 20f;
+    [SerializeField] private NetworkPrefabRef oakBlockPrefab; 
+    [SerializeField] private float blockSpacing = 0.6f;
+
+
 
     // ══════════════════════════════════════════════════════════════
     //  ПРИВАТНОЕ СОСТОЯНИЕ И СЕТЬ
@@ -98,9 +91,10 @@ public class PlayerController : NetworkBehaviour
     [Networked] private NetworkBool _isGrounded { get; set; }
 
     // Характеристики класса
-    [Networked] public PlayerClass CurrentClass { get; private set; }
-    [Networked] public int MaxHP { get; private set; }
-    [Networked] public int CurrentHP { get; private set; }
+    [Networked] public PlantType CurrentPlant { get; private set; }
+    [Networked] public float Fertilizer { get; private set; } = 100f;
+    [Networked] public NetworkBool IsGrowing { get; private set; }
+
 
     // Характеристики CC
     private float   _standHeight;
@@ -128,15 +122,27 @@ public class PlayerController : NetworkBehaviour
     private NetworkInputData _currentInput;
     private NetworkButtons   _currentPressed;
 
-    // Кулдауны атак
-    [Networked] private float _primaryAttackTimer { get; set; }
-    [Networked] private float _secondaryAttackTimer { get; set; }
+    // Состояние роста
+    [Networked] private Vector3 _growthHeadPos { get; set; }
+    [Networked] private Vector3 _lastBlockPos { get; set; }
+    [Networked] private float _currentGrowthDist { get; set; }
+    
+    [Networked] public NetworkBool IsRetracting { get; private set; }
+    [Networked, Capacity(100)] private NetworkArray<NetworkId> _spawnedBlocks { get; }
+    [Networked] private int _spawnedBlocksCount { get; set; }
+    [Networked] private float _retractTimer { get; set; }
+    
+    [Networked] private float _treeIdleTimer { get; set; }
+    [Networked] private float _treeIdleDuration { get; set; }
+
+
 
     // Камера — локально
     private float   _yaw;
     private float   _pitch;
     private Vector3 _pivotPos;
     private float   _currentCamDist;
+    private Renderer[] _renderers;
 
     // ══════════════════════════════════════════════════════════════
     //  ИНТЕРФЕЙС NETWORK BEHAVIOUR
@@ -145,6 +151,7 @@ public class PlayerController : NetworkBehaviour
     private void Awake()
     {
         _cc = GetComponent<CharacterController>();
+        _renderers = GetComponentsInChildren<Renderer>(true);
 
         _standHeight    = _cc.height;
         _standCenter    = _cc.center;
@@ -157,7 +164,6 @@ public class PlayerController : NetworkBehaviour
 
     public override void Spawned()
     {
-        // Если камера находится прямо в префабе игрока — выключаем её для всех чужих игроков!
         if (cam != null)
         {
             cam.gameObject.SetActive(HasInputAuthority);
@@ -168,47 +174,22 @@ public class PlayerController : NetworkBehaviour
         if (HasInputAuthority)
         {
             Local = this;
-            
-            // Если камера не внутри префаба (cam == null), забираем главную камеру сцены
             if (cam == null) cam = Camera.main;
-
             _yaw             = transform.eulerAngles.y;
             _pitch           = 15f;
             _currentCamDist  = camDistance;
             _pivotPos        = transform.position + Vector3.up * camPivotHeight;
-            
             if (cam != null) camCollisionMask &= ~(1 << gameObject.layer);
         }
 
         if (HasStateAuthority)
         {
             _dashCharges = maxDashCharges;
-            
-            // Задаем базовый класс при спавне (None)
-            ChangeClass(PlayerClass.None);
+            CurrentPlant = PlantType.Oak; // Для теста ставим Дуб
         }
     }
 
-    public void ChangeClass(PlayerClass newClass)
-    {
-        // Менять классы может только сервер (StateAuthority)
-        if (!HasStateAuthority) return;
 
-        CurrentClass = newClass;
-
-        // Настраиваем ХП в зависимости от класса
-        switch (newClass)
-        {
-            case PlayerClass.None:      MaxHP = baseHpNone; break;
-            case PlayerClass.Swordsman: MaxHP = baseHpSwordsman; break;
-            case PlayerClass.Archer:    MaxHP = baseHpArcher; break;
-            case PlayerClass.Mage:      MaxHP = baseHpMage; break;
-            case PlayerClass.Tank:      MaxHP = baseHpTank; break;
-        }
-
-        // Полностью восстанавливаем ХП при смене класса (или можно сделать % отношение)
-        CurrentHP = MaxHP;
-    }
 
     public override void Despawned(NetworkRunner runner, bool hasState)
     {
@@ -232,16 +213,8 @@ public class PlayerController : NetworkBehaviour
         data.Buttons.Set(NetworkInputButtons.Jump,   _kb.spaceKey.isPressed);
         data.Buttons.Set(NetworkInputButtons.Crouch, _kb.leftCtrlKey.isPressed);
         data.Buttons.Set(NetworkInputButtons.Dash,   _kb.leftShiftKey.isPressed);
-        data.Buttons.Set(NetworkInputButtons.SecondaryAttack, _kb.qKey.isPressed);
-        data.Buttons.Set(NetworkInputButtons.Interact, _kb.eKey.isPressed);
+        data.Buttons.Set(NetworkInputButtons.Action, _kb.fKey.isPressed);
 
-        if (_mouse != null)
-        {
-            data.Buttons.Set(NetworkInputButtons.PrimaryAttack, _mouse.leftButton.isPressed);
-        }
-
-        bool movPressed = (h != 0 || v != 0);
-        data.Buttons.Set(NetworkInputButtons.Mantle, _kb.spaceKey.isPressed && movPressed);
 
         data.LookAngles = new Vector2(_pitch, _yaw);
         return data;
@@ -253,7 +226,19 @@ public class PlayerController : NetworkBehaviour
 
     private void Update()
     {
+        if (Object == null || !Object.IsValid) return;
+
         ApplyColliderTransition();
+
+        bool shouldBeVisible = !IsGrowing && !IsRetracting;
+        if (_renderers != null)
+        {
+            for (int i = 0; i < _renderers.Length; i++)
+            {
+                if (_renderers[i] != null)
+                    _renderers[i].enabled = shouldBeVisible;
+            }
+        }
 
         if (!HasInputAuthority) return;
 
@@ -278,6 +263,7 @@ public class PlayerController : NetworkBehaviour
 
     private void LateUpdate()
     {
+        if (Object == null || !Object.IsValid) return;
         if (!HasInputAuthority || _mouse == null) return;
         PositionCamera();
     }
@@ -305,6 +291,15 @@ public class PlayerController : NetworkBehaviour
         float currentPivotHeight = Mathf.Lerp(crouchCamPivotHeight, camPivotHeight, heightT);
 
         Vector3 targetPivot = transform.position + Vector3.up * currentPivotHeight;
+        
+        float targetBaseDist = camDistance;
+
+        if (IsGrowing || IsRetracting)
+        {
+            targetPivot = _lastBlockPos;
+            targetBaseDist = treeCamDistance;
+        }
+
         _pivotPos = Vector3.Lerp(_pivotPos, targetPivot, camFollowSpeed * Time.deltaTime);
 
         Quaternion camRot = Quaternion.Euler(_pitch, _yaw, 0f);
@@ -315,10 +310,10 @@ public class PlayerController : NetworkBehaviour
 
         Vector3 pivotWithOffset = _pivotPos + rightOffset;
 
-        float desiredDist = camDistance;
+        float desiredDist = targetBaseDist;
         if (Physics.SphereCast(pivotWithOffset, camCollisionRadius,
                                backDir, out RaycastHit hit,
-                               camDistance, camCollisionMask,
+                               targetBaseDist, camCollisionMask,
                                QueryTriggerInteraction.Ignore))
         {
             desiredDist = Mathf.Max(hit.distance, camMinDistance);
@@ -346,25 +341,27 @@ public class PlayerController : NetworkBehaviour
             _currentPressed = input.Buttons.GetPressed(_prevButtons);
             _prevButtons    = input.Buttons;
 
-            // Обновляем таймеры атак (уменьшаем на время кадра)
-            if (_primaryAttackTimer > 0f)   _primaryAttackTimer -= Runner.DeltaTime;
-            if (_secondaryAttackTimer > 0f) _secondaryAttackTimer -= Runner.DeltaTime;
+            HandleGrowth();
 
-            // Применяем поворот в ходе симуляции, чтобы NetworkTransform
-            // корректно захватывал предсказанное вращение на клиенте-владельце
-            // и не вызывал дёрганий от интерполяции к серверному состоянию.
-            transform.rotation = Quaternion.Euler(0f, input.LookAngles.y, 0f);
+            if (IsGrowing || IsRetracting)
+            {
+                if (_cc.enabled) _cc.enabled = false;
+            }
+            else
+            {
+                if (!_cc.enabled) _cc.enabled = true;
+            }
 
-            HandleCrouch();
+            if (!IsGrowing && !IsRetracting)
+            {
+                HandleCrouch();
+                HandleDash();
+                if (_isMantling)
+                    HandleMantle();
+                else if (!_isDashing)
+                    HandleMovement();
+            }
             HandleDashRecharge();
-            HandleDash();
-            HandleAttacks();
-            HandleInteract();
-
-            if (_isMantling)
-                HandleMantle();
-            else if (!_isDashing)
-                HandleMovement();
         }
     }
 
@@ -575,156 +572,138 @@ public class PlayerController : NetworkBehaviour
         else _dashCooldownTimer = 0f;
     }
 
-    private void HandleAttacks()
+    private void HandleGrowth()
     {
-        bool primaryPressed   = _currentPressed.IsSet(NetworkInputButtons.PrimaryAttack);
-        bool secondaryPressed = _currentPressed.IsSet(NetworkInputButtons.SecondaryAttack);
-
-        if (primaryPressed && _primaryAttackTimer <= 0f)
+        if (_currentPressed.IsSet(NetworkInputButtons.Action))
         {
-            _primaryAttackTimer = GetPrimaryCooldown();
-
-            switch (CurrentClass)
+            if (IsGrowing)
             {
-                case PlayerClass.Swordsman: 
-                    PerformMeleeAttack(meleeDamage, meleeRange, meleeRadius);
-                    break;
-                case PlayerClass.Archer:
-                    break;
-                case PlayerClass.Mage:
-                    break;
-                case PlayerClass.Tank:
-                    break;
+                IsGrowing = false;
+                IsRetracting = true;
+                _retractTimer = 0f;
+            }
+            else if (!IsRetracting)
+            {
+                IsGrowing = true;
+                float feetY = transform.position.y + _standCenter.y - _standHeight * 0.5f;
+                // Начинаем рост чуть выше земли (чтобы было видно корень)
+                _growthHeadPos = new Vector3(transform.position.x, feetY + 0.2f, transform.position.z);
+                _lastBlockPos = _growthHeadPos;
+                _currentGrowthDist = 0f;
+
+                _treeIdleTimer = 0f;
+                _treeIdleDuration = 15f + ((float)(Runner.Tick % 500) / 100f);
             }
         }
 
-        if (secondaryPressed && _secondaryAttackTimer <= 0f)
+        if (IsRetracting)
         {
-            _secondaryAttackTimer = GetSecondaryCooldown();
-
-            switch (CurrentClass)
-            {
-                case PlayerClass.Swordsman: 
-                    PerformProjectileAttack();
-                    break;
-                case PlayerClass.Archer:
-                    break;
-                case PlayerClass.Mage:
-                    break;
-                case PlayerClass.Tank:
-                    break;
-            }
-        }
-    }
-
-    private float GetPrimaryCooldown()
-    {
-        if (CurrentClass == PlayerClass.Swordsman) return meleeCooldown;
-        return 0.5f; // дефолт
-    }
-
-    private float GetSecondaryCooldown()
-    {
-        if (CurrentClass == PlayerClass.Swordsman) return rangedCooldown;
-        return 1.0f; // дефолт
-    }
-
-    // ── Логика атак Мечника ──────────────────────────────────────
-
-    private void PerformMeleeAttack(int damage, float range, float radius)
-    {
-        // Атака происходит только на сервере
-        if (!HasStateAuthority) return;
-
-        Quaternion lookRot = Quaternion.Euler(0f, _currentInput.LookAngles.y, 0f);
-        Vector3 origin = transform.position + Vector3.up * 1f; // уровень груди
-        Vector3 forward = lookRot * Vector3.forward;
-        Vector3 attackPoint = origin + forward * range;
-
-        // Ищем всех коллайдеров в радиусе удара
-        Collider[] hits = Physics.OverlapSphere(attackPoint, radius);
-
-        foreach (var hit in hits)
-        {
-            // Проверяем, попали ли мы по другому игроку
-            PlayerController target = hit.GetComponent<PlayerController>();
+            _retractTimer += Runner.DeltaTime;
+            // Скорость разрушения дерева (1 куб за 0.05 сек)
+            float retractDelay = 0.05f; 
             
-            if (target != null && target != this)
+            while (_retractTimer >= retractDelay)
             {
-                // Наносим урон
-                target.TakeDamage(damage);
-                Debug.Log($"[{Object.Id}] Hit {target.Object.Id} with sword for {damage} damage!");
+                _retractTimer -= retractDelay;
+                if (_spawnedBlocksCount > 0)
+                {
+                    _spawnedBlocksCount--;
+                    NetworkId idToDespawn = _spawnedBlocks[_spawnedBlocksCount];
+                    
+                    if (HasStateAuthority)
+                    {
+                        NetworkObject obj = Runner.FindObject(idToDespawn);
+                        if (obj != null)
+                        {
+                            Runner.Despawn(obj);
+                        }
+                    }
+
+                    if (_spawnedBlocksCount > 0)
+                    {
+                        NetworkId prevId = _spawnedBlocks[_spawnedBlocksCount - 1];
+                        NetworkObject prevObj = Runner.FindObject(prevId);
+                        if (prevObj != null) 
+                            _lastBlockPos = prevObj.transform.position;
+                    }
+                    else
+                    {
+                        IsRetracting = false;
+                        _lastBlockPos = transform.position;
+                        break;
+                    }
+                }
+                else
+                {
+                    IsRetracting = false;
+                    break;
+                }
             }
         }
-    }
-
-    private void PerformProjectileAttack()
-    {
-        if (!HasStateAuthority) return;
-
-        // Если префаб не задан, просто выводим лог
-        if (projectilePrefab == NetworkPrefabRef.Empty)
+        else if (IsGrowing)
         {
-            Debug.LogWarning("Снаряд для Мечника (Q) не задан в инспекторе!");
-            return;
-        }
-
-        // КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Используем LookAngles.x (Pitch) и LookAngles.y (Yaw)
-        // Теперь кинжал летит вверх/вниз в зависимости от того, куда смотрит камера
-        Quaternion lookRot = Quaternion.Euler(_currentInput.LookAngles.x, _currentInput.LookAngles.y, 0f);
-        
-        // Немного сдвигаем точку старта, чтобы снаряд не появлялся внутри самого игрока
-        Vector3 spawnPos = transform.position + Vector3.up * 1.5f + lookRot * Vector3.forward * 1f;
-        
-        // Спавним снаряд на сервере без InputAuthority, 
-        // чтобы NetworkTransform просто плавно интерполировал его на всех клиентах, убирая дёргания.
-        NetworkObject projObj = Runner.Spawn(projectilePrefab, spawnPos, lookRot, PlayerRef.None);
-
-        Debug.Log("Swordsman: Threw a projectile!");
-    }
-
-    private void HandleInteract()
-    {
-        if (_currentPressed.IsSet(NetworkInputButtons.Interact))
-        {
-            if (!HasStateAuthority) 
+            _treeIdleTimer += Runner.DeltaTime;
+            if (_treeIdleTimer >= _treeIdleDuration)
             {
-                Debug.Log("[Client] E pressed, but only Server handles pickups.");
+                IsGrowing = false;
+                IsRetracting = true;
+                _retractTimer = 0f;
                 return;
             }
 
-            // Сфера радиусом 2м для поиска предметов перед собой
-            Vector3 origin = transform.position + Vector3.up * 1f;
-            Collider[] hits = Physics.OverlapSphere(origin, 2f);
+            // Если зажат W (вперед)
+            if (_currentInput.MoveDirection.y > 0.1f && _currentGrowthDist < maxGrowthDistance)
+            {
+                // Двигаем голову (если есть удобрения)
+                if (Fertilizer > 0)
+                {
+                    float consumed = growthSpeed * Runner.DeltaTime * 10f; // 10 единиц в секунду
+                    Fertilizer -= consumed;
 
-            Debug.Log($"[Server] E pressed! Searching in 2m radius... Found {hits.Length} colliders.");
+                    // Направление роста = куда смотрит камера
+                    Quaternion camRot = Quaternion.Euler(_currentInput.LookAngles.x, _currentInput.LookAngles.y, 0f);
+                    Vector3 growDir = camRot * Vector3.forward;
 
-            // Логика подбора WeaponPickup была удалена
+                    _growthHeadPos += growDir * growthSpeed * Runner.DeltaTime;
+                    _currentGrowthDist += growthSpeed * Runner.DeltaTime;
+
+                    // Спавним блок, если отошли достаточно далеко
+                    if (Vector3.Distance(_growthHeadPos, _lastBlockPos) >= blockSpacing)
+                    {
+                        if (HasStateAuthority && oakBlockPrefab != NetworkPrefabRef.Empty)
+                        {
+                            NetworkObject obj = Runner.Spawn(oakBlockPrefab, _growthHeadPos, camRot, Object.InputAuthority);
+                            if (obj != null && _spawnedBlocksCount < _spawnedBlocks.Length)
+                            {
+                                _spawnedBlocks.Set(_spawnedBlocksCount, obj.Id);
+                                _spawnedBlocksCount++;
+                            }
+                        }
+                        _lastBlockPos = _growthHeadPos;
+
+                        _treeIdleTimer = 0f;
+                        _treeIdleDuration = 15f + ((float)(Runner.Tick % 500) / 100f);
+                    }
+                }
+                else
+                {
+                    // Нет удобрений - рост временно прекращен, идет таймер простоя
+                }
+            }
+            else if (_currentInput.MoveDirection.y <= 0.1f)
+            {
+                // Регенерация удобрений когда не растем (но в режиме роста)
+                Fertilizer = Mathf.Min(100f, Fertilizer + Runner.DeltaTime * 5f);
+            }
         }
-    }
-
-    // ── Система Урона ────────────────────────────────────────────
-
-    public void TakeDamage(int amount)
-    {
-        if (!HasStateAuthority) return;
-
-        CurrentHP -= amount;
-        
-        if (CurrentHP <= 0)
+        else
         {
-            CurrentHP = 0;
-            Debug.Log($"Player {Object.Id} DIED!");
-            // TODO: Логика смерти (респаун, анимация)
-            
-            // Временно: респавним игрока чуть выше
-            _velocity = Vector3.zero;
-            _cc.enabled = false;
-            transform.position = new Vector3(0, 5, 0);
-            _cc.enabled = true;
-            CurrentHP = MaxHP;
+             // Регенерация удобрений в обычном режиме
+             Fertilizer = Mathf.Min(100f, Fertilizer + Runner.DeltaTime * 15f);
         }
     }
+
+
 
     private void HandleCrouch()
     {
@@ -747,6 +726,8 @@ public class PlayerController : NetworkBehaviour
 
     private void ApplyColliderTransition()
     {
+        if (!_cc.enabled) return;
+
         // Используем Time.deltaTime потому что это визуальное сглаживание коллайдера (работает и на клиентах)
         float t    = crouchTransitionSpeed * Time.deltaTime;
         _cc.height = Mathf.Lerp(_cc.height, _targetCCHeight, t);

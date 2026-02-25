@@ -43,7 +43,7 @@ public class GameStatsUI : MonoBehaviour
         // Ищем раннер (если он запущен или мы переподключились)
         if (_runner == null || !_runner.IsRunning)
         {
-            _runner = FindObjectOfType<NetworkRunner>();
+            _runner = FindFirstObjectByType<NetworkRunner>();
         }
 
         string pingStr = "Offline";
@@ -73,6 +73,13 @@ public class GameStatsUI : MonoBehaviour
         // Формируем красивый текст с поддержкой цветов HTML
         string text = $"<color=#00FF00><b>FPS:</b></color> {_fps:0}\n";
         text += $"<color=#00FFFF><b>Ping:</b></color> {pingStr}\n";
+
+        if (PlayerController.Local != null)
+        {
+            float fert = PlayerController.Local.Fertilizer;
+            text += $"<color=#32CD32><b>Удобрение:</b></color> {Mathf.RoundToInt(fert)}%\n";
+        }
+
         text += $"<color=#FFA500><b>Room:</b></color> {roomStr}\n";
         text += $"<color=#FFFF00><b>Region:</b></color> {regionStr}\n";
         text += $"<color=#FF69B4><b>Players:</b></color> {playersStr}\n";
