@@ -66,36 +66,19 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private LayerMask camCollisionMask = ~0;
     [SerializeField] private float camFollowSpeed = 12f;
 
-    [Header("── Камера (Дерево) ──────────────")]
+    [Header("── Камера (Растение) ──────────────")]
     [SerializeField] private float treeCamDistance = 12f;
-
-    [Header("── Параметры Растения ────────────────────")]
-    [SerializeField] private float growthSpeed = 5f;
-    [SerializeField] private float maxGrowthDistance = 20f;
-    [SerializeField] private NetworkPrefabRef oakBlockPrefab; 
-    [SerializeField] private NetworkPrefabRef vineBlockPrefab; 
-    [SerializeField] private float blockSpacing = 0.6f;
-
-
-
-    // ══════════════════════════════════════════════════════════════
-    //  ПРИВАТНОЕ СОСТОЯНИЕ И СЕТЬ
-    // ══════════════════════════════════════════════════════════════
 
     public static PlayerController Local { get; private set; }
 
+    // Ссылки на компоненты
     private CharacterController _cc;
+    private PlantGrower _grower;
     private Keyboard _kb;
     private Mouse    _mouse;
 
     [Networked] private Vector3 _velocity { get; set; }
     [Networked] private NetworkBool _isGrounded { get; set; }
-
-    // Характеристики класса
-    [Networked] public PlantType CurrentPlant { get; private set; }
-    [Networked] public float Fertilizer { get; private set; } = 100f;
-    [Networked] public NetworkBool IsGrowing { get; private set; }
-
 
     // Характеристики CC
     private float   _standHeight;
@@ -123,20 +106,6 @@ public class PlayerController : NetworkBehaviour
     private NetworkInputData _currentInput;
     private NetworkButtons   _currentPressed;
 
-    // Состояние роста
-    [Networked] private Vector3 _growthHeadPos { get; set; }
-    [Networked] private Vector3 _lastBlockPos { get; set; }
-    [Networked] private float _currentGrowthDist { get; set; }
-    [Networked] private Vector3 _initialGrowthDir { get; set; }
-    
-    [Networked] public NetworkBool IsRetracting { get; private set; }
-    [Networked, Capacity(100)] private NetworkArray<NetworkId> _spawnedBlocks { get; }
-    [Networked] private int _spawnedBlocksCount { get; set; }
-    [Networked] private float _retractTimer { get; set; }
-    
-    [Networked] private float _treeIdleTimer { get; set; }
-    [Networked] private float _treeIdleDuration { get; set; }
-
 
 
     // Камера — локально
@@ -153,6 +122,7 @@ public class PlayerController : NetworkBehaviour
     private void Awake()
     {
         _cc = GetComponent<CharacterController>();
+        _grower = GetComponent<PlantGrower>();
         _renderers = GetComponentsInChildren<Renderer>(true);
 
         _standHeight    = _cc.height;
@@ -182,12 +152,16 @@ public class PlayerController : NetworkBehaviour
             _currentCamDist  = camDistance;
             _pivotPos        = transform.position + Vector3.up * camPivotHeight;
             if (cam != null) camCollisionMask &= ~(1 << gameObject.layer);
+
+            if (PlantSelectionUI.Instance != null && _grower != null && !_grower.IsPlantSelected)
+            {
+                PlantSelectionUI.Instance.Show();
+            }
         }
 
         if (HasStateAuthority)
         {
             _dashCharges = maxDashCharges;
-            CurrentPlant = PlantType.Oak; // Для теста ставим Дуб
         }
     }
 
@@ -202,6 +176,8 @@ public class PlayerController : NetworkBehaviour
     public NetworkInputData GetLocalInput()
     {
         var data = new NetworkInputData();
+        if (_grower != null && !_grower.IsPlantSelected) return data; // Отключаем ввод до выбора
+
         _kb = Keyboard.current;
         if (_kb == null) return data;
 
@@ -234,7 +210,10 @@ public class PlayerController : NetworkBehaviour
 
         ApplyColliderTransition();
 
-        bool shouldBeVisible = !IsGrowing && !IsRetracting;
+        bool isG = _grower != null && _grower.IsGrowing;
+        bool isR = _grower != null && _grower.IsRetracting;
+
+        bool shouldBeVisible = !isG && !isR;
         if (_renderers != null)
         {
             for (int i = 0; i < _renderers.Length; i++)
@@ -250,6 +229,12 @@ public class PlayerController : NetworkBehaviour
         _mouse = Mouse.current;
         if (_kb == null || _mouse == null) return;
 
+        if (_grower != null && !_grower.IsPlantSelected)
+        {
+            // Даем PlantSelectionUI управлять курсором. Просто не крутим камеру здесь
+            return;
+        }
+
         if (_kb.tabKey.isPressed)
         {
             Cursor.lockState = CursorLockMode.None;
@@ -263,6 +248,16 @@ public class PlayerController : NetworkBehaviour
         }
 
         HandleLook();
+    }
+
+    [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
+    public void RPC_SetInitialPlant(PlantType plant)
+    {
+        if (_grower != null)
+        {
+            _grower.CurrentPlant = plant;
+            _grower.IsPlantSelected = true;
+        }
     }
 
     private void LateUpdate()
@@ -298,9 +293,9 @@ public class PlayerController : NetworkBehaviour
         
         float targetBaseDist = camDistance;
 
-        if (IsGrowing || IsRetracting)
+        if (_grower != null && (_grower.IsGrowing || _grower.IsRetracting))
         {
-            targetPivot = _lastBlockPos;
+            targetPivot = _grower.LastBlockPos;
             targetBaseDist = treeCamDistance;
         }
 
@@ -345,15 +340,22 @@ public class PlayerController : NetworkBehaviour
             _currentPressed = input.Buttons.GetPressed(_prevButtons);
             _prevButtons    = input.Buttons;
 
-            if (!IsGrowing && !IsRetracting)
+            if (_grower != null)
             {
-                if (_currentPressed.IsSet(NetworkInputButtons.PlantOak)) CurrentPlant = PlantType.Oak;
-                if (_currentPressed.IsSet(NetworkInputButtons.PlantVine)) CurrentPlant = PlantType.Vine;
+                if (!_grower.IsPlantSelected)
+                {
+                    // Разрешаем только падение (гравитацию), если растение еще не выбрано
+                    HandleMovement();
+                    return;
+                }
+
+                _grower.ProcessGrowth(input, _currentPressed);
             }
 
-            HandleGrowth();
+            bool isG = _grower != null && _grower.IsGrowing;
+            bool isR = _grower != null && _grower.IsRetracting;
 
-            if (IsGrowing || IsRetracting)
+            if (isG || isR)
             {
                 if (_cc.enabled) _cc.enabled = false;
             }
@@ -362,7 +364,7 @@ public class PlayerController : NetworkBehaviour
                 if (!_cc.enabled) _cc.enabled = true;
             }
 
-            if (!IsGrowing && !IsRetracting)
+            if (!isG && !isR)
             {
                 HandleCrouch();
                 HandleDash();
@@ -639,312 +641,6 @@ public class PlayerController : NetworkBehaviour
         else _dashCooldownTimer = 0f;
     }
 
-    private void HandleGrowth()
-    {
-        if (_currentPressed.IsSet(NetworkInputButtons.Action))
-        {
-            if (IsGrowing || IsRetracting)
-            {
-                IsGrowing = false;
-                IsRetracting = true;
-                _retractTimer = 0f;
-            }
-            else if (!IsRetracting)
-            {
-                if (CurrentPlant == PlantType.Vine)
-                {
-                    IsGrowing = true;
-                    float feetY = transform.position.y + _standCenter.y - _standHeight * 0.5f;
-                    Quaternion lookRot = Quaternion.Euler(0f, _currentInput.LookAngles.y, 0f);
-                    Vector3 forward = lookRot * Vector3.forward;
-                    _initialGrowthDir = forward; // Запоминаем изначальное направление взгляда
-                    
-                    Vector3 scanStart = new Vector3(transform.position.x, feetY + 0.2f, transform.position.z);
-                    
-                    Vector3 targetStartPos = scanStart + forward * 0.5f; 
-                    
-                    // Ищем ближайший край обрыва в пределах 3 метров
-                    for (float dist = 0.5f; dist <= 3.0f; dist += 0.25f)
-                    {
-                        Vector3 p = scanStart + forward * dist + Vector3.up * 0.5f;
-                        bool foundSurface = false;
-                        
-                        foreach (var hit in Physics.RaycastAll(p, Vector3.down, 1.5f, ~0, QueryTriggerInteraction.Ignore))
-                        {
-                            if (hit.collider.transform.root == transform.root) continue;
-                            if (hit.collider.GetComponentInParent<NetworkBehaviour>() != null && !hit.collider.gameObject.isStatic) continue;
-                            foundSurface = true;
-                            break;
-                        }
-
-                        if (!foundSurface)
-                        {
-                            // Край найден! Начинаем от края
-                            targetStartPos = scanStart + forward * (dist - 0.25f);
-                            break;
-                        }
-                    }
-
-                    // Ищем высоту пола у стартовой точки лозы, чтобы прилепить её
-                    bool surfaceForStart = false;
-                    foreach (var hit in Physics.RaycastAll(targetStartPos + Vector3.up * 0.5f, Vector3.down, 1.5f, ~0, QueryTriggerInteraction.Ignore))
-                    {
-                        if (hit.collider.transform.root == transform.root) continue;
-                        if (hit.collider.GetComponentInParent<NetworkBehaviour>() != null && !hit.collider.gameObject.isStatic) continue;
-                        
-                        _growthHeadPos = hit.point + Vector3.up * 0.1f;
-                        surfaceForStart = true;
-                        break;
-                    }
-
-                    if (!surfaceForStart) _growthHeadPos = targetStartPos;
-
-                    _lastBlockPos = _growthHeadPos;
-                    _currentGrowthDist = 0f;
-                    _treeIdleTimer = 0f;
-                    _treeIdleDuration = 15f + ((float)(Runner.Tick % 500) / 100f);
-                }
-                else
-                {
-                    IsGrowing = true;
-                    float feetY = transform.position.y + _standCenter.y - _standHeight * 0.5f;
-                    // Начинаем рост чуть выше земли (чтобы было видно корень)
-                    _growthHeadPos = new Vector3(transform.position.x, feetY + 0.2f, transform.position.z);
-                    _lastBlockPos = _growthHeadPos;
-                    _currentGrowthDist = 0f;
-                    
-                    _treeIdleTimer = 0f;
-                    _treeIdleDuration = 15f + ((float)(Runner.Tick % 500) / 100f);
-                }
-            }
-        }
-
-        if (IsRetracting)
-        {
-            _retractTimer += Runner.DeltaTime;
-            // Скорость разрушения дерева (1 куб за 0.05 сек)
-            float retractDelay = 0.05f; 
-            
-            while (_retractTimer >= retractDelay)
-            {
-                _retractTimer -= retractDelay;
-                if (_spawnedBlocksCount > 0)
-                {
-                    _spawnedBlocksCount--;
-                    NetworkId idToDespawn = _spawnedBlocks[_spawnedBlocksCount];
-                    
-                    if (HasStateAuthority)
-                    {
-                        NetworkObject obj = Runner.FindObject(idToDespawn);
-                        if (obj != null)
-                        {
-                            Runner.Despawn(obj);
-                        }
-                    }
-
-                    if (_spawnedBlocksCount > 0)
-                    {
-                        NetworkId prevId = _spawnedBlocks[_spawnedBlocksCount - 1];
-                        NetworkObject prevObj = Runner.FindObject(prevId);
-                        if (prevObj != null) 
-                            _lastBlockPos = prevObj.transform.position;
-                    }
-                    else
-                    {
-                        IsRetracting = false;
-                        _lastBlockPos = transform.position;
-                        break;
-                    }
-                }
-                else
-                {
-                    IsRetracting = false;
-                    break;
-                }
-            }
-        }
-        else if (IsGrowing)
-        {
-            _treeIdleTimer += Runner.DeltaTime;
-            if (_treeIdleTimer >= _treeIdleDuration)
-            {
-                IsGrowing = false;
-                IsRetracting = true;
-                _retractTimer = 0f;
-                return;
-            }
-
-            bool isGrowingInputActive = false;
-            Vector3 growDir = Vector3.zero;
-            Quaternion spawnRot = Quaternion.identity;
-
-            if (CurrentPlant == PlantType.Vine)
-            {
-                // Зажатая кнопка F означает активный рост для лозы вниз (или вперед до края)
-                isGrowingInputActive = _currentInput.Buttons.IsSet(NetworkInputButtons.Action);
-                
-                // ВАЖНО: Мы используем направление, сохраненное в МОМЕНТ НАЧАЛА РОСТА, а не крутим за мышкой каждый кадр!
-                Vector3 forward = _initialGrowthDir;
-
-                // Проверяем, есть ли пол (проверяем из центра вперед-вниз)
-                Vector3 checkStart = _growthHeadPos + Vector3.up * 0.5f;
-                bool hasFloor = false;
-
-                foreach(var hit in Physics.RaycastAll(checkStart, Vector3.down, 1.0f, ~0, QueryTriggerInteraction.Ignore))
-                {
-                    if (hit.collider.transform.root == transform.root) continue;
-                    if (hit.collider.GetComponentInParent<NetworkBehaviour>() != null && !hit.collider.gameObject.isStatic) continue;
-                    
-                    hasFloor = true;
-                    break;
-                }
-
-                if (hasFloor)
-                {
-                    // Пол есть, ползем вперед (вдоль пола до края)
-                    growDir = forward;
-                    // Y (up) смотрит вверх (от пола), Z (forward) смотрит вперед
-                    spawnRot = Quaternion.LookRotation(forward, Vector3.up); 
-                }
-                else
-                {
-                    // Обрыв! Ползем вниз
-                    growDir = Vector3.down;
-                    // Y (up) смотрит назад (от воображаемой стены обрыва), Z (forward) смотрит вниз
-                    spawnRot = Quaternion.LookRotation(Vector3.down, -forward); 
-                }
-            }
-            else // Oak
-            {
-                // Зажатая кнопка W (вперед) означает рост для дуба
-                isGrowingInputActive = _currentInput.MoveDirection.y > 0.1f;
-                spawnRot = Quaternion.Euler(_currentInput.LookAngles.x, _currentInput.LookAngles.y, 0f);
-                growDir = spawnRot * Vector3.forward;
-            }
-
-            if (isGrowingInputActive && _currentGrowthDist < maxGrowthDistance)
-            {
-                // Двигаем голову (если есть удобрения)
-                if (Fertilizer > 0)
-                {
-                    float consumed = growthSpeed * Runner.DeltaTime * 10f; // 10 единиц в секунду
-                    Fertilizer -= consumed;
-
-                    _growthHeadPos += growDir * growthSpeed * Runner.DeltaTime;
-                    _currentGrowthDist += growthSpeed * Runner.DeltaTime;
-
-                    if (CurrentPlant == PlantType.Vine)
-                    {
-                        // Вместо широкой сферы, которая цепляет полки со всех сторон, 
-                        // лоза ищет стену ТОЛЬКО за своей "спиной" (противоположно её forward-у)
-                        // либо ровно под собой (если ползет по полу)
-                        Vector3 scanDir = (growDir == Vector3.down) ? -(spawnRot * Vector3.forward) : Vector3.down;
-                        Vector3 scanOrigin = _growthHeadPos - scanDir * 0.5f;
-
-                        if (Physics.Raycast(scanOrigin, scanDir, out RaycastHit wallHit, 1.5f, ~0, QueryTriggerInteraction.Ignore))
-                        {
-                            if (wallHit.collider.transform.root != transform.root &&
-                                (wallHit.collider.GetComponentInParent<NetworkBehaviour>() == null || wallHit.collider.gameObject.isStatic))
-                            {
-                                Vector3 surfaceNormal = wallHit.normal;
-
-                                // Если лоза ползет ВНИЗ, запрещаем ей "ложиться" на верхние грани полок
-                                bool shouldSnap = true;
-                                if (growDir == Vector3.down && surfaceNormal.y > 0.8f)
-                                {
-                                    shouldSnap = false;
-                                }
-
-                                if (shouldSnap)
-                                {
-                                    Vector3 targetPos = wallHit.point + surfaceNormal * 0.15f;
-                                    
-                                    // Если ползем по полу (вперед), магнитим только по высоте Y
-                                    if (growDir != Vector3.down)
-                                    {
-                                        targetPos.x = _growthHeadPos.x;
-                                        targetPos.z = _growthHeadPos.z;
-                                    }
-                                    
-                                    _growthHeadPos = Vector3.Lerp(_growthHeadPos, targetPos, 15f * Runner.DeltaTime);
-
-                                    // Направляем ось Y блока на предыдущий спавн, чтобы при растяжении они точно соединялись
-                                    Vector3 toLast = (_lastBlockPos - _growthHeadPos).normalized;
-                                    if (toLast.sqrMagnitude < 0.001f)
-                                    {
-                                        toLast = (growDir == Vector3.down) ? Vector3.up : -growDir.normalized;
-                                    }
-
-                                    // Поворачиваем лозу: Y (up) смотрит ОТ стены, а Z (forward) тянется назад к прошлому блоку для соединения!
-                                    spawnRot = Quaternion.LookRotation(toLast, surfaceNormal);
-                                }
-                            }
-                        }
-                    }
-
-                    // Спавним блок, если отошли достаточно далеко
-                    if (Vector3.Distance(_growthHeadPos, _lastBlockPos) >= blockSpacing)
-                    {
-                        if (HasStateAuthority)
-                        {
-                            NetworkPrefabRef prefabToSpawn = CurrentPlant == PlantType.Vine ? vineBlockPrefab : oakBlockPrefab;
-                            if (prefabToSpawn != NetworkPrefabRef.Empty)
-                            {
-                                // Задаем TargetScale, чтобы блоки лозы растягивались по своей оси Z и перекрывали пустоты
-                                Vector3 spawnScale = Vector3.one;
-                                if (CurrentPlant == PlantType.Vine)
-                                {
-                                    float distToLast = Vector3.Distance(_lastBlockPos, _growthHeadPos);
-                                    // Делаем длину блока (теперь ось Z) в 2.5 раза больше расстояния между ними
-                                    spawnScale = new Vector3(1f, 1f, Mathf.Max(1.0f, distToLast * 2.5f));
-                                }
-
-                                NetworkObject obj = Runner.Spawn(prefabToSpawn, _growthHeadPos, spawnRot, Object.InputAuthority, (runner, no) => {
-                                    if (CurrentPlant == PlantType.Vine)
-                                    {
-                                        VineBlock vineScript = no.GetComponent<VineBlock>();
-                                        if (vineScript != null) vineScript.TargetScale = spawnScale;
-                                    }
-                                    else
-                                    {
-                                        OakBlock oakScript = no.GetComponent<OakBlock>();
-                                        if (oakScript != null) oakScript.TargetScale = spawnScale;
-                                    }
-                                });
-                                
-                                if (obj != null && _spawnedBlocksCount < _spawnedBlocks.Length)
-                                {
-                                    _spawnedBlocks.Set(_spawnedBlocksCount, obj.Id);
-                                    _spawnedBlocksCount++;
-                                }
-                            }
-                        }
-                        _lastBlockPos = _growthHeadPos;
-
-                        _treeIdleTimer = 0f;
-                        _treeIdleDuration = 15f + ((float)(Runner.Tick % 500) / 100f);
-                    }
-                }
-                else
-                {
-                    // Нет удобрений - рост временно прекращен, идет таймер простоя
-                }
-            }
-            else if (!isGrowingInputActive)
-            {
-                // Регенерация удобрений когда не растем (но в режиме роста)
-                Fertilizer = Mathf.Min(100f, Fertilizer + Runner.DeltaTime * 5f);
-            }
-        }
-        else
-        {
-             // Регенерация удобрений в обычном режиме
-             Fertilizer = Mathf.Min(100f, Fertilizer + Runner.DeltaTime * 15f);
-        }
-    }
-
-
-
     private void HandleCrouch()
     {
         bool wants = _currentInput.Buttons.IsSet(NetworkInputButtons.Crouch);
@@ -968,7 +664,6 @@ public class PlayerController : NetworkBehaviour
     {
         if (!_cc.enabled) return;
 
-        // Используем Time.deltaTime потому что это визуальное сглаживание коллайдера (работает и на клиентах)
         float t    = crouchTransitionSpeed * Time.deltaTime;
         _cc.height = Mathf.Lerp(_cc.height, _targetCCHeight, t);
         _cc.center = Vector3.Lerp(_cc.center, _targetCCCenter, t);
@@ -979,13 +674,10 @@ public class PlayerController : NetworkBehaviour
         float feetY = transform.position.y + _standCenter.y - _standHeight * 0.5f;
         float r = _cc.radius * 0.9f;
 
-        // Мы хотим проверить только пустое пространство ВЫШЕ текущей головы:
-        // Нижняя точка проверочной капсулы будет лежать ровно на уровне crouchHeight
         float bottomY = feetY + crouchHeight + r;
         float topY    = feetY + _standHeight - r;
 
-        if (bottomY > topY) 
-            bottomY = topY;
+        if (bottomY > topY) bottomY = topY;
 
         Vector3 p1 = new Vector3(transform.position.x, bottomY, transform.position.z);
         Vector3 p2 = new Vector3(transform.position.x, topY,    transform.position.z);
@@ -993,9 +685,7 @@ public class PlayerController : NetworkBehaviour
         bool wasEnabled = _cc.enabled;
         if (wasEnabled) _cc.enabled = false;
 
-        // Исключаем слой самого игрока, чтобы капсула не задевала хитбоксы и триггеры игрока
         int layerMask = ~0 & ~(1 << gameObject.layer);
-
         bool hit = Physics.CheckCapsule(p1, p2, r, layerMask, QueryTriggerInteraction.Ignore);
 
         if (wasEnabled) _cc.enabled = true;
@@ -1003,14 +693,12 @@ public class PlayerController : NetworkBehaviour
         return hit;
     }
 
-    // ══════════════════════════════════════════════════════════════
-    //  ПУБЛИЧНЫЕ СВОЙСТВА (HUD)
-    // ══════════════════════════════════════════════════════════════
     public int   DashCharges          => _dashCharges;
     public float DashRechargeProgress => Mathf.Clamp01(_dashCooldownTimer / dashCooldown);
     public bool  IsDashing            => _isDashing;
     public bool  IsCrouching          => _isCrouching;
     public bool  IsGrounded           => _cc.isGrounded;
+    public PlantGrower Grower         => _grower;
 
     // ══════════════════════════════════════════════════════════════
     //  КУРСОР (UI)

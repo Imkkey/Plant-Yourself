@@ -27,10 +27,10 @@ public class GameStatsUI : MonoBehaviour
     private void Update()
     {
         // Плавное обновление шкалы удобрения (каждый кадр)
-        if (fertilizerSlider != null && PlayerController.Local != null)
+        if (fertilizerSlider != null && PlayerController.Local != null && PlayerController.Local.Grower != null)
         {
             // Плавно меняем значение слайдера для красоты (от 0 до 1, так как Fertilizer от 0 до 100)
-            float targetValue = PlayerController.Local.Fertilizer / 100f;
+            float targetValue = PlayerController.Local.Grower.Fertilizer / 100f;
             fertilizerSlider.value = Mathf.Lerp(fertilizerSlider.value, targetValue, Time.deltaTime * 10f);
         }
 
@@ -66,9 +66,9 @@ public class GameStatsUI : MonoBehaviour
         string modeStr = "Offline";
         string plantStr = "None";
 
-        if (PlayerController.Local != null)
+        if (PlayerController.Local != null && PlayerController.Local.Grower != null)
         {
-            plantStr = PlayerController.Local.CurrentPlant.ToString();
+            plantStr = PlayerController.Local.Grower.CurrentPlant.ToString();
         }
 
         if (_runner != null && _runner.IsRunning)

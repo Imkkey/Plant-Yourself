@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 1740235953593588609}
   - component: {fileID: 234575204579470483}
   - component: {fileID: 8242482009799635817}
+  - component: {fileID: -7445420367391962510}
   - component: {fileID: 3308379235677548088}
   - component: {fileID: 1095264766657032180}
   - component: {fileID: 8598909687022465393}
@@ -96,6 +97,34 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &-7445420367391962510
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 721918251509936670}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c117ef1516fc5be47bf8b2d3c6e26f1a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlantGrower
+  growthSpeed: 5
+  maxGrowthDistance: 20
+  oakBlockPrefab:
+    RawGuidValue: c900f427917757145bee2c9cf610142a
+  vineBlockPrefab:
+    RawGuidValue: d2153be9b430e074d93d8fbcd64231b6
+  blockSpacing: 0.6
+  _CurrentPlant: 0
+  _IsPlantSelected:
+    _value: 0
+  _Fertilizer: 100
+  _IsGrowing:
+    _value: 0
+  _IsRetracting:
+    _value: 0
+  _LastBlockPos: {x: 0, y: 0, z: 0}
 --- !u!136 &3308379235677548088
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -188,19 +217,6 @@ MonoBehaviour:
     m_Bits: 4294967295
   camFollowSpeed: 12
   treeCamDistance: 12
-  growthSpeed: 5
-  maxGrowthDistance: 20
-  oakBlockPrefab:
-    RawGuidValue: c900f427917757145bee2c9cf610142a
-  vineBlockPrefab:
-    RawGuidValue: d2153be9b430e074d93d8fbcd64231b6
-  blockSpacing: 0.6
-  _CurrentPlant: 0
-  _Fertilizer: 100
-  _IsGrowing:
-    _value: 0
-  _IsRetracting:
-    _value: 0
 --- !u!114 &-305474684081347197
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -218,6 +234,7 @@ MonoBehaviour:
   Flags: 262145
   NestedObjects: []
   NetworkedBehaviours:
+  - {fileID: -7445420367391962510}
   - {fileID: 8598909687022465393}
   - {fileID: 3189487408943887731}
   ForceRemoteRenderTimeframe: 0
