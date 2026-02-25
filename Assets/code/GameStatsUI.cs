@@ -56,7 +56,7 @@ public class GameStatsUI : MonoBehaviour
         // Ищем раннер (если он запущен или мы переподключились)
         if (_runner == null || !_runner.IsRunning)
         {
-            _runner = FindObjectOfType<NetworkRunner>();
+            _runner = FindAnyObjectByType<NetworkRunner>();
         }
 
         string pingStr = "Offline";

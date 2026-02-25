@@ -194,6 +194,7 @@ public class PlayerController : NetworkBehaviour
         data.Buttons.Set(NetworkInputButtons.Action, _kb.fKey.isPressed);
         data.Buttons.Set(NetworkInputButtons.PlantOak, _kb.digit1Key.isPressed);
         data.Buttons.Set(NetworkInputButtons.PlantVine, _kb.digit2Key.isPressed);
+        data.Buttons.Set(NetworkInputButtons.PlantChamomile, _kb.digit3Key.isPressed);
 
 
         data.LookAngles = new Vector2(_pitch, _yaw);

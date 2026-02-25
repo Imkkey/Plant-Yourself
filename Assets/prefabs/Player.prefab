@@ -115,11 +115,16 @@ MonoBehaviour:
     RawGuidValue: c900f427917757145bee2c9cf610142a
   vineBlockPrefab:
     RawGuidValue: d2153be9b430e074d93d8fbcd64231b6
+  chamomilePetalPrefab:
+    RawGuidValue: 7d7d1b24435b4304b938bcc25cc18d84
   blockSpacing: 0.6
   _CurrentPlant: 0
   _IsPlantSelected:
     _value: 0
   _Fertilizer: 100
+  _ChamomileCharges: 6
+  _ActiveChamomilePetalId:
+    Raw: 0
   _IsGrowing:
     _value: 0
   _IsRetracting:

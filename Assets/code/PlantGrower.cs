@@ -8,6 +8,7 @@ public class PlantGrower : NetworkBehaviour
     [SerializeField] private float maxGrowthDistance = 20f;
     [SerializeField] private NetworkPrefabRef oakBlockPrefab;
     [SerializeField] private NetworkPrefabRef vineBlockPrefab;
+    [SerializeField] private NetworkPrefabRef chamomilePetalPrefab;
     [SerializeField] private float blockSpacing = 0.6f;
 
     // Ссылки на другие компоненты
@@ -17,6 +18,9 @@ public class PlantGrower : NetworkBehaviour
     [Networked] public PlantType CurrentPlant { get; set; } = PlantType.None;
     [Networked] public NetworkBool IsPlantSelected { get; set; } = false;
     [Networked] public float Fertilizer { get; set; } = 100f;
+    [Networked] public int ChamomileCharges { get; set; } = 6;
+    [Networked] public float ChamomileRechargeTimer { get; set; }
+    [Networked] public NetworkId ActiveChamomilePetalId { get; set; }
     [Networked] public NetworkBool IsGrowing { get; private set; }
     [Networked] public NetworkBool IsRetracting { get; private set; }
 
@@ -41,11 +45,39 @@ public class PlantGrower : NetworkBehaviour
             CurrentPlant = PlantType.None;
             IsPlantSelected = false;
             Fertilizer = 100f;
+            ChamomileCharges = 6;
+            ChamomileRechargeTimer = 0f;
         }
     }
 
     public void ProcessGrowth(NetworkInputData input, NetworkButtons pressed)
     {
+        // Пассивная регенерация (независимо от выбранного цветка, пока не находимся в процессе роста)
+        if (!IsGrowing && !IsRetracting)
+        {
+            Fertilizer = Mathf.Min(100f, Fertilizer + Runner.DeltaTime * 15f);
+
+            if (ChamomileCharges < 6)
+            {
+                ChamomileRechargeTimer += Runner.DeltaTime;
+                if (ChamomileRechargeTimer >= 5f) // 5 секунд на восстановление 1 заряда
+                {
+                    ChamomileCharges++;
+                    ChamomileRechargeTimer = 0f;
+                }
+            }
+            else
+            {
+                ChamomileRechargeTimer = 0f;
+            }
+        }
+
+        if (CurrentPlant == PlantType.Chamomile)
+        {
+            ProcessChamomileGrowth(input, pressed);
+            return;
+        }
+
         if (pressed.IsSet(NetworkInputButtons.Action))
         {
             if (IsGrowing || IsRetracting)
@@ -67,11 +99,6 @@ public class PlantGrower : NetworkBehaviour
         else if (IsGrowing)
         {
             UpdateGrowth(input);
-        }
-        else
-        {
-            // Регенерация удобрений в обычном режиме
-            Fertilizer = Mathf.Min(100f, Fertilizer + Runner.DeltaTime * 15f);
         }
     }
 
@@ -282,5 +309,103 @@ public class PlantGrower : NetworkBehaviour
         IsGrowing = false;
         IsRetracting = false;
         LastBlockPos = transform.position;
+    }
+
+    private void ProcessChamomileGrowth(NetworkInputData input, NetworkButtons pressed)
+    {
+        if (pressed.IsSet(NetworkInputButtons.Action))
+        {
+            if (!IsGrowing)
+            {
+                if (ChamomileCharges > 0)
+                {
+                    StartChamomile(input);
+                }
+            }
+            else
+            {
+                if (ActiveChamomilePetalId.IsValid)
+                {
+                    NetworkObject petalObj = Runner.FindObject(ActiveChamomilePetalId);
+                    if (petalObj != null)
+                    {
+                        var petal = petalObj.GetComponent<ChamomilePetal>();
+                        if (petal != null && !petal.IsFrozen)
+                        {
+                            petal.Freeze();
+                            EndChamomile();
+                        }
+                    }
+                }
+            }
+        }
+
+        if (IsGrowing)
+        {
+            if (ActiveChamomilePetalId.IsValid)
+            {
+                NetworkObject petalObj = Runner.FindObject(ActiveChamomilePetalId);
+                if (petalObj != null)
+                {
+                    LastBlockPos = petalObj.transform.position;
+                    
+                    var petal = petalObj.GetComponent<ChamomilePetal>();
+                    if (petal != null && petal.IsFrozen)
+                    {
+                        EndChamomile();
+                    }
+                }
+                else
+                {
+                    EndChamomile();
+                }
+            }
+        }
+    }
+
+    private void StartChamomile(NetworkInputData input)
+    {
+        IsGrowing = true;
+        
+        if (HasStateAuthority)
+        {
+            ChamomileCharges--;
+            Quaternion lookRot = Quaternion.Euler(input.LookAngles.x, input.LookAngles.y, 0f);
+            Vector3 spawnPos = transform.position + Vector3.up * 1f + lookRot * Vector3.forward * 0.5f;
+
+            NetworkObject petalObj = Runner.Spawn(chamomilePetalPrefab, spawnPos, lookRot, Object.InputAuthority, (runner, no) =>
+            {
+                no.GetComponent<ChamomilePetal>().Init(lookRot * Vector3.forward, this);
+            });
+            
+            if (petalObj != null)
+            {
+                ActiveChamomilePetalId = petalObj.Id;
+            }
+        }
+        LastBlockPos = transform.position;
+    }
+
+    private void EndChamomile()
+    {
+        IsGrowing = false;
+        LastBlockPos = transform.position;
+        ActiveChamomilePetalId = default;
+    }
+
+    public void RestoreChamomileCharge()
+    {
+        if (HasStateAuthority && ChamomileCharges < 6)
+        {
+            ChamomileCharges++;
+        }
+    }
+
+    public void OnPetalFrozen()
+    {
+        if (HasStateAuthority && IsGrowing)
+        {
+            EndChamomile();
+        }
     }
 }

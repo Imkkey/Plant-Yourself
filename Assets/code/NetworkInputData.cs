@@ -33,4 +33,5 @@ public static class NetworkInputButtons
     public const int Crouch = 3;   // Left Ctrl
     public const int PlantOak = 4; // '1' key
     public const int PlantVine = 5; // '2' key
+    public const int PlantChamomile = 6; // '3' key
 }

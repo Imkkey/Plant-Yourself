@@ -32,19 +32,10 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
     [SerializeField] private GameObject  lobbyPanel;
     [SerializeField] private TMP_InputField roomNameInput;
-    [Tooltip("Выпадающий список для выбора региона")]
-    [SerializeField] private TMP_Dropdown regionDropdown;
     [SerializeField] private Button      hostButton;
     [SerializeField] private Button      joinButton;
     [SerializeField] private Button      disconnectButton;
     [SerializeField] private TMP_Text    statusText;
-
-    [Header("── Тестовое Оружие ────────────────────")]
-    [Tooltip("Префаб оружия (WeaponPickup) для спавна на старте сервера")]
-    [SerializeField] private NetworkPrefabRef testWeaponPrefab;
-
-    [Tooltip("Точки, на которых будет спавниться оружие (перетащи сюда пустые объекты со сцены)")]
-    [SerializeField] private Transform[] weaponSpawnPoints;
 
     // ── Внутренние переменные ────────────────────────────────────
 
@@ -62,13 +53,6 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         if (hostButton)       hostButton.onClick.AddListener(OnClickHost);
         if (joinButton)       joinButton.onClick.AddListener(OnClickJoin);
         if (disconnectButton) disconnectButton.onClick.AddListener(OnClickDisconnect);
-
-        if (regionDropdown != null)
-        {
-            regionDropdown.ClearOptions();
-            // "Auto" будет использовать ближайший сервер с наилучшим пингом
-            regionDropdown.AddOptions(new List<string> { "Auto", "eu", "us", "asia", "ru", "sa" });
-        }
 
         ShowLobby(true);
         SetStatus("Введи название комнаты и нажми Host или Join");
@@ -126,7 +110,7 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
         if (_runner != null)
         {
-            _runner.Shutdown();
+            _ = _runner.Shutdown();
             _runner = null;
         }
 
@@ -142,18 +126,7 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
         // Настройка региона
         var appSettings = Fusion.Photon.Realtime.PhotonAppSettings.Global.AppSettings.GetCopy();
-        if (regionDropdown != null)
-        {
-            string selectedRegion = regionDropdown.options[regionDropdown.value].text;
-            if (selectedRegion != "Auto")
-            {
-                appSettings.FixedRegion = selectedRegion;
-            }
-            else
-            {
-                appSettings.FixedRegion = ""; // Очищаем для работы Best Region
-            }
-        }
+        appSettings.FixedRegion = "eu"; // Жестко задаем регион Европа
 
         var args = new StartGameArgs
         {
@@ -183,33 +156,13 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
             SetStatus(mode == GameMode.Host
                 ? $"Хост: {roomName}  |  Ожидаем игроков..."
                 : $"Подключён к: {roomName}");
-
-            // Спавним оружие сразу после успешного создания сервера
-            if (mode == GameMode.Host && testWeaponPrefab != NetworkPrefabRef.Empty)
-            {
-                if (weaponSpawnPoints != null && weaponSpawnPoints.Length > 0)
-                {
-                    foreach (var spawnPoint in weaponSpawnPoints)
-                    {
-                        if (spawnPoint != null)
-                        {
-                            _runner.Spawn(testWeaponPrefab, spawnPoint.position, spawnPoint.rotation);
-                        }
-                    }
-                }
-                else
-                {
-                    _runner.Spawn(testWeaponPrefab, new Vector3(2f, 1f, 2f), Quaternion.identity);
-                    _runner.Spawn(testWeaponPrefab, new Vector3(-2f, 1f, 2f), Quaternion.identity);
-                }
-            }
         }
         else
         {
             SetStatus($"Ошибка подключения: {result.ShutdownReason}");
             if (_runner != null) 
             {
-                _runner.Shutdown();
+                _ = _runner.Shutdown();
                 _runner = null;
             }
         }

@@ -10,6 +10,7 @@ public class PlantSelectionUI : MonoBehaviour
     [Header("Buttons")]
     [SerializeField] private Button selectOakButton;
     [SerializeField] private Button selectVineButton;
+    [SerializeField] private Button selectChamomileButton;
 
     private static PlantSelectionUI _instance;
     public static PlantSelectionUI Instance => _instance;
@@ -22,6 +23,7 @@ public class PlantSelectionUI : MonoBehaviour
 
         if (selectOakButton != null) selectOakButton.onClick.AddListener(() => SelectPlant(PlantType.Oak));
         if (selectVineButton != null) selectVineButton.onClick.AddListener(() => SelectPlant(PlantType.Vine));
+        if (selectChamomileButton != null) selectChamomileButton.onClick.AddListener(() => SelectPlant(PlantType.Chamomile));
     }
 
     public void Show()
