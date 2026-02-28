@@ -16,9 +16,9 @@ public class VineBlock : NetworkBehaviour
         transform.localScale = new Vector3(TargetScale.x, TargetScale.y, 0.1f);
     }
 
-    public override void FixedUpdateNetwork()
+    public override void Render()
     {
         // Плавное увеличение масштаба
-        transform.localScale = Vector3.Lerp(transform.localScale, TargetScale, Runner.DeltaTime * 10f);
+        transform.localScale = Vector3.Lerp(transform.localScale, TargetScale, Time.deltaTime * 10f);
     }
 }

@@ -164,4 +164,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7ca934ff3e7e44444a92391f0bccca9d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::VineBlock
-  _TargetScale: {x: 0, y: 0, z: 49.31}
+  _TargetScale: {x: 0, y: 0, z: 0}

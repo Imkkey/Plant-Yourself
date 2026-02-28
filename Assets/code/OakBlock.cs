@@ -15,9 +15,9 @@ public class OakBlock : NetworkBehaviour
         transform.localScale = TargetScale * 0.1f;
     }
 
-    public override void FixedUpdateNetwork()
+    public override void Render()
     {
-        transform.localScale = Vector3.Lerp(transform.localScale, TargetScale, Runner.DeltaTime * 10f);
+        transform.localScale = Vector3.Lerp(transform.localScale, TargetScale, Time.deltaTime * 10f);
     }
 }
 
