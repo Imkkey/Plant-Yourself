@@ -24,6 +24,14 @@ public class PlantGrower : NetworkBehaviour
     [Networked] public NetworkBool IsGrowing { get; private set; }
     [Networked] public NetworkBool IsRetracting { get; private set; }
 
+    [Networked] public NetworkBool InChamomileForm { get; set; }
+    [Networked] public float ChamomileChargePower { get; set; }
+    [Networked] public NetworkBool IsChargingChamomile { get; set; }
+    [Networked] private NetworkBool WasActionHeld { get; set; }
+
+    [Networked, Capacity(30)] private NetworkArray<NetworkId> _spawnedPetals { get; }
+    [Networked] private int _spawnedPetalsCount { get; set; }
+
     [Networked] private Vector3 _growthHeadPos { get; set; }
     [Networked] public Vector3 LastBlockPos { get; private set; }
     [Networked] private float _currentGrowthDist { get; set; }
@@ -60,9 +68,9 @@ public class PlantGrower : NetworkBehaviour
             if (ChamomileCharges < 6)
             {
                 ChamomileRechargeTimer += Runner.DeltaTime;
-                if (ChamomileRechargeTimer >= 5f) // 5 секунд на восстановление 1 заряда
+                if (ChamomileRechargeTimer >= 5f) // 5 секунд на восстановление ВСЕХ снарядов
                 {
-                    ChamomileCharges++;
+                    ChamomileCharges = 6;
                     ChamomileRechargeTimer = 0f;
                 }
             }
@@ -308,22 +316,40 @@ public class PlantGrower : NetworkBehaviour
     {
         IsGrowing = false;
         IsRetracting = false;
+        InChamomileForm = false;
         LastBlockPos = transform.position;
     }
 
     private void ProcessChamomileGrowth(NetworkInputData input, NetworkButtons pressed)
     {
-        if (pressed.IsSet(NetworkInputButtons.Action))
+        bool actionHeld = input.Buttons.IsSet(NetworkInputButtons.Action);
+        bool jumpPressed = pressed.IsSet(NetworkInputButtons.Jump);
+
+        if (!InChamomileForm)
         {
-            if (!IsGrowing)
+            if (pressed.IsSet(NetworkInputButtons.Action))
             {
-                if (ChamomileCharges > 0)
-                {
-                    StartChamomile(input);
-                }
+                // Enter Chamomile form
+                InChamomileForm = true;
+                IsGrowing = true; 
+                LastBlockPos = transform.position;
+                WasActionHeld = actionHeld; 
+                ActiveChamomilePetalId = default;
             }
-            else
+        }
+        else
+        {
+            // Exit form
+            if (jumpPressed)
             {
+                ExitChamomileForm();
+                return;
+            }
+
+            // Did we just press Action?
+            if (actionHeld && !WasActionHeld)
+            {
+                bool frozeExisting = false;
                 if (ActiveChamomilePetalId.IsValid)
                 {
                     NetworkObject petalObj = Runner.FindObject(ActiveChamomilePetalId);
@@ -333,64 +359,118 @@ public class PlantGrower : NetworkBehaviour
                         if (petal != null && !petal.IsFrozen)
                         {
                             petal.Freeze();
-                            EndChamomile();
+                            frozeExisting = true;
                         }
                     }
+                    ActiveChamomilePetalId = default;
+                }
+
+                // Start charging the next petal if we have charges AND we didn't just freeze one
+                if (!frozeExisting && ChamomileCharges > 0)
+                {
+                    IsChargingChamomile = true;
+                    ChamomileChargePower = 0f;
                 }
             }
-        }
 
-        if (IsGrowing)
-        {
+            // Handle charging and throwing
+            if (IsChargingChamomile)
+            {
+                if (actionHeld && ChamomileCharges > 0)
+                {
+                    // Charge!
+                    ChamomileChargePower += Runner.DeltaTime * 15f; 
+                    if (ChamomileChargePower > 20f) ChamomileChargePower = 20f;
+                }
+                else
+                {
+                    // Action Released -> Throw!
+                    ShootChamomilePetal(input, ChamomileChargePower);
+                    IsChargingChamomile = false;
+                    ChamomileChargePower = 0f;
+                }
+            }
+            
+            // Camera follow logic
             if (ActiveChamomilePetalId.IsValid)
             {
                 NetworkObject petalObj = Runner.FindObject(ActiveChamomilePetalId);
                 if (petalObj != null)
                 {
                     LastBlockPos = petalObj.transform.position;
-                    
-                    var petal = petalObj.GetComponent<ChamomilePetal>();
-                    if (petal != null && petal.IsFrozen)
-                    {
-                        EndChamomile();
-                    }
                 }
                 else
                 {
-                    EndChamomile();
+                    ActiveChamomilePetalId = default;
                 }
             }
+            else
+            {
+                LastBlockPos = transform.position;
+            }
+        }
+
+        WasActionHeld = actionHeld;
+    }
+
+    private void ExitChamomileForm()
+    {
+        InChamomileForm = false;
+        IsGrowing = false;
+        IsChargingChamomile = false;
+        ChamomileChargePower = 0f;
+        ActiveChamomilePetalId = default;
+        
+        // Мгновенный откат всех зарядов при возвращении в боба
+        if (HasStateAuthority)
+        {
+            ChamomileCharges = 6;
+            ChamomileRechargeTimer = 0f;
+        }
+
+        // Destroy all petals spawned by this player
+        if (HasStateAuthority)
+        {
+            for (int i = 0; i < _spawnedPetalsCount; i++)
+            {
+                NetworkId petalId = _spawnedPetals[i];
+                if (petalId.IsValid)
+                {
+                    NetworkObject petalObj = Runner.FindObject(petalId);
+                    if (petalObj != null) Runner.Despawn(petalObj);
+                }
+            }
+            _spawnedPetalsCount = 0;
         }
     }
 
-    private void StartChamomile(NetworkInputData input)
+    private void ShootChamomilePetal(NetworkInputData input, float power)
     {
-        IsGrowing = true;
-        
-        if (HasStateAuthority)
+        if (HasStateAuthority && ChamomileCharges > 0)
         {
             ChamomileCharges--;
             Quaternion lookRot = Quaternion.Euler(input.LookAngles.x, input.LookAngles.y, 0f);
             Vector3 spawnPos = transform.position + Vector3.up * 1f + lookRot * Vector3.forward * 0.5f;
 
+            float shootPower = Mathf.Max(power, 5f); // min power
+
             NetworkObject petalObj = Runner.Spawn(chamomilePetalPrefab, spawnPos, lookRot, Object.InputAuthority, (runner, no) =>
             {
-                no.GetComponent<ChamomilePetal>().Init(lookRot * Vector3.forward, this);
+                var petal = no.GetComponent<ChamomilePetal>();
+                if (petal != null) petal.Init(lookRot * Vector3.forward, this, shootPower);
             });
             
             if (petalObj != null)
             {
                 ActiveChamomilePetalId = petalObj.Id;
+                if (_spawnedPetalsCount < _spawnedPetals.Length)
+                {
+                    _spawnedPetals.Set(_spawnedPetalsCount, petalObj.Id);
+                    _spawnedPetalsCount++;
+                }
             }
         }
         LastBlockPos = transform.position;
-    }
-
-    private void EndChamomile()
-    {
-        IsGrowing = false;
-        LastBlockPos = transform.position;
-        ActiveChamomilePetalId = default;
     }
 
     public void RestoreChamomileCharge()
@@ -403,9 +483,29 @@ public class PlantGrower : NetworkBehaviour
 
     public void OnPetalFrozen()
     {
-        if (HasStateAuthority && IsGrowing)
+        // Не возвращаемся в оболочку при заморозке, игрок решает сам (через прыжок)
+    }
+
+    private void OnGUI()
+    {
+        if (HasInputAuthority && InChamomileForm && IsChargingChamomile)
         {
-            EndChamomile();
+            float powerRatio = ChamomileChargePower / 20f;
+            float w = 200f;
+            float h = 15f;
+            float x = (Screen.width - w) / 2f;
+            float y = (Screen.height - h) / 2f + 40f;
+            
+            // Background
+            Color oldColor = GUI.color;
+            GUI.color = new Color(0, 0, 0, 0.5f);
+            GUI.DrawTexture(new Rect(x, y, w, h), Texture2D.whiteTexture);
+            
+            // Foreground
+            GUI.color = new Color(1f, 0.8f, 0.2f, 1f); 
+            GUI.DrawTexture(new Rect(x, y, w * powerRatio, h), Texture2D.whiteTexture);
+            
+            GUI.color = oldColor;
         }
     }
 }

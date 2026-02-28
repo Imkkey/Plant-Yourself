@@ -330,7 +330,28 @@ public class PlayerController : NetworkBehaviour
         if (_grower != null && (_grower.IsGrowing || _grower.IsRetracting))
         {
             targetPivot = _grower.LastBlockPos;
-            targetBaseDist = treeCamDistance;
+            targetBaseDist = 5.5f;
+
+            if (_grower.InChamomileForm)
+            {
+                if (_grower.ActiveChamomilePetalId.IsValid)
+                {
+                    // Следим за лепестком
+                    targetBaseDist = 5.5f * 0.6f;
+                }
+                else
+                {
+                    // Точка камеры на ромашке (чуть ниже центра или как раз на уровне груди, 0.8f)
+                    targetPivot = transform.position + Vector3.up * 0.8f;
+                    
+                    if (_grower.IsChargingChamomile)
+                    {
+                        // Приближаемся максимально близко, чтобы перекрыть коллизию с землей (до 0.5 метров)
+                        float chargeRatio = _grower.ChamomileChargePower / 20f;
+                        targetBaseDist = Mathf.Lerp(5.5f, 0.5f, chargeRatio);
+                    }
+                }
+            }
         }
 
         _pivotPos = Vector3.Lerp(_pivotPos, targetPivot, camFollowSpeed * Time.deltaTime);

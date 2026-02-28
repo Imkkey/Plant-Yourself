@@ -17,15 +17,31 @@ public class ChamomilePetal : NetworkBehaviour
 
     private NetworkId _ownerId;
     public PlantGrower OwnerGrower { get; set; }
+    
+    private Collider _col;
 
-    public void Init(Vector3 lookDirection, PlantGrower owner)
+    public override void Spawned()
+    {
+        _col = GetComponent<Collider>();
+    }
+
+    public override void Render()
+    {
+        if (_col != null)
+        {
+            _col.isTrigger = !IsFrozen;
+        }
+    }
+
+    public void Init(Vector3 lookDirection, PlantGrower owner, float shootPower)
     {
         InitialForward = lookDirection;
         InitialRight = Vector3.Cross(Vector3.up, lookDirection).normalized;
         if (InitialRight.sqrMagnitude < 0.01f) InitialRight = Vector3.right;
         
-        // Петля взлетает вверх и чуть-чуть вперед по направлению взгляда
-        Velocity = Vector3.up * jumpForce + lookDirection * 2f;
+        // Ослабляем вертикальный угол при броске вверх, чтобы лепесток не улетал в космос
+        Vector3 flattenedDir = new Vector3(lookDirection.x, lookDirection.y * 0.3f, lookDirection.z).normalized;
+        Velocity = flattenedDir * (shootPower * 1.5f);
         IsFrozen = false;
         TimeAlive = 0f;
         OwnerGrower = owner;
@@ -36,19 +52,27 @@ public class ChamomilePetal : NetworkBehaviour
     {
         if (IsFrozen)
         {
-            TimeAlive += Runner.DeltaTime;
-            if (TimeAlive >= 15f && HasStateAuthority)
-            {
-                Runner.Despawn(Object);
-            }
+            // Лепесток остается навсегда, пока игрок не выйдет из режима цветка
             return;
         }
 
         Vector3 vel = Velocity;
-        vel.y -= fallGravity * Runner.DeltaTime;
+        
+        // Гравитация (падаем чуть быстрее)
+        vel.y -= (fallGravity + 1.5f) * Runner.DeltaTime;
+        if (vel.y < -5f) vel.y = -5f; // Увеличенная Terminal velocity
 
-        // Падает медленнее, сопротивление воздуха (Terminal Velocity)
-        if (vel.y < -3f) vel.y = -3f;
+        // Сопротивление воздуха по горизонтали (торможение)
+        Vector3 horizontalVel = new Vector3(vel.x, 0, vel.z);
+        float currentSpeed = horizontalVel.magnitude;
+        if (currentSpeed > 0f) {
+            float drag = 30f; // Сильно увеличили drag, чтобы лепесток останавливался быстрее
+            currentSpeed -= drag * Runner.DeltaTime;
+            if (currentSpeed < 0f) currentSpeed = 0f;
+            horizontalVel = horizontalVel.normalized * currentSpeed;
+            vel.x = horizontalVel.x;
+            vel.z = horizontalVel.z;
+        }
 
         Velocity = vel;
 
@@ -73,14 +97,20 @@ public class ChamomilePetal : NetworkBehaviour
 
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Runner.DeltaTime * 10f);
         
-        // Столкновение с землей
-        if (HasStateAuthority && Velocity.y < 0f)
+        // Столкновение с препятствиями (чтобы не проходил сквозь стены и пол)
+        if (HasStateAuthority)
         {
             var hits = Physics.OverlapSphere(transform.position, 0.3f);
             foreach (var hit in hits)
             {
-                if (hit.transform.root != transform.root && !hit.isTrigger && hit.GetComponent<Collider>().GetComponentInParent<PlayerController>() == null)
+                if (hit.transform.root != transform.root && !hit.isTrigger)
                 {
+                    // Игнорируем игроков (проходим сквозь них)
+                    if (hit.GetComponentInParent<PlayerController>() != null) continue;
+
+                    // Игнорируем другие лепестки (проходим сквозь них)
+                    if (hit.GetComponentInParent<ChamomilePetal>() != null) continue;
+
                     Freeze();
                     return;
                 }
