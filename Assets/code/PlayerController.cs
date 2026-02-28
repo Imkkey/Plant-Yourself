@@ -130,7 +130,6 @@ public class PlayerController : NetworkBehaviour
     private System.Collections.Generic.List<PingMarker> _activePings = new System.Collections.Generic.List<PingMarker>();
     private Texture2D _pingTexture;
     private AudioClip _proceduralPingSound;
-    private float _pingCooldownTimer;
 
     // ══════════════════════════════════════════════════════════════
     //  ИНТЕРФЕЙС NETWORK BEHAVIOUR
@@ -150,9 +149,9 @@ public class PlayerController : NetworkBehaviour
         if (crouchHeight >= _standHeight)
             crouchHeight = _standHeight * 0.5f;
 
-        // Фикс ходьбы по блокам и склонам (Устраняет сопротивление и заикания)
+        // Фикс ходьбы по блокам и склонам
         _cc.slopeLimit = 65f;
-        _cc.stepOffset = 0.5f; // Позволяет плавно перешагивать кривые стыки и ступеньки
+        _cc.stepOffset = 0.3f; // Не слишком большая, чтобы не "телепортироваться" вверх по блокам
     }
 
     public override void Spawned()
@@ -280,14 +279,11 @@ public class PlayerController : NetworkBehaviour
         HandleLook();
 
         // ── PING SYSTEM ──
-        if (_pingCooldownTimer > 0f) _pingCooldownTimer -= Time.deltaTime;
-
-        if (_mouse.middleButton.wasPressedThisFrame && cam != null && _pingCooldownTimer <= 0f)
+        if (_mouse.middleButton.wasPressedThisFrame && cam != null)
         {
             Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
             if (Physics.Raycast(ray, out RaycastHit pingHit, 500f, ~0, QueryTriggerInteraction.Ignore))
             {
-                _pingCooldownTimer = 0.5f; // Кулдаун 0.5 секунды между пингами
                 RPC_SendPing(pingHit.point, PlayerName.ToString());
             }
         }
@@ -562,10 +558,8 @@ public class PlayerController : NetworkBehaviour
         if (_isGrounded)
         {
             Vector3 vel = _velocity;
-            // Делаем притяжение к земле СИЛЬНЫМ (-15f вместо -2f), чтобы персонаж 
-            // не отрывался от ступенек/склона при сбегании вниз (чтобы не было рывков!)
-            // Это не помешает ходьбе вверх, так как CC просто скользит по нормали.
-            if (vel.y <= 0f) vel.y = -15f; 
+            // Легкое притяжение к земле, стандартное для CharacterController
+            if (vel.y <= 0f) vel.y = -2f; 
             _velocity = vel;
 
             if (_currentPressed.IsSet(NetworkInputButtons.Jump) && !_isCrouching)

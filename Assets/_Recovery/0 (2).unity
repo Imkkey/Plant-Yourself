@@ -3031,7 +3031,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GameStatsUI
   statsText: {fileID: 845002102}
   fertilizerSlider: {fileID: 1009486706}
-  gameVersion: PY v3
+  gameVersion: PY v2
   updateInterval: 0.5
 --- !u!1 &781888172
 GameObject:
