@@ -62,7 +62,7 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private float camShoulderOffset = 0.8f;
     [SerializeField] private float camPivotHeight = 1.4f;
     [SerializeField] private float crouchCamPivotHeight = 0.9f;
-    [SerializeField] private float camCollisionRadius = 0.1f;
+    [SerializeField] private float camCollisionRadius = 0.3f;
     [SerializeField] private LayerMask camCollisionMask = ~0;
     [SerializeField] private float camFollowSpeed = 12f;
 
@@ -120,6 +120,18 @@ public class PlayerController : NetworkBehaviour
     private float   _currentCamDist;
     private Renderer[] _renderers;
 
+    // ── Ping System ──
+    private class PingMarker
+    {
+        public Vector3 Position;
+        public float SpawnTime;
+        public string PlayerName;
+    }
+    private System.Collections.Generic.List<PingMarker> _activePings = new System.Collections.Generic.List<PingMarker>();
+    private Texture2D _pingTexture;
+    private AudioClip _proceduralPingSound;
+    private float _pingCooldownTimer;
+
     // ══════════════════════════════════════════════════════════════
     //  ИНТЕРФЕЙС NETWORK BEHAVIOUR
     // ══════════════════════════════════════════════════════════════
@@ -137,6 +149,10 @@ public class PlayerController : NetworkBehaviour
 
         if (crouchHeight >= _standHeight)
             crouchHeight = _standHeight * 0.5f;
+
+        // Фикс ходьбы по блокам и склонам (Устраняет сопротивление и заикания)
+        _cc.slopeLimit = 65f;
+        _cc.stepOffset = 0.5f; // Позволяет плавно перешагивать кривые стыки и ступеньки
     }
 
     public override void Spawned()
@@ -262,6 +278,19 @@ public class PlayerController : NetworkBehaviour
         }
 
         HandleLook();
+
+        // ── PING SYSTEM ──
+        if (_pingCooldownTimer > 0f) _pingCooldownTimer -= Time.deltaTime;
+
+        if (_mouse.middleButton.wasPressedThisFrame && cam != null && _pingCooldownTimer <= 0f)
+        {
+            Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
+            if (Physics.Raycast(ray, out RaycastHit pingHit, 500f, ~0, QueryTriggerInteraction.Ignore))
+            {
+                _pingCooldownTimer = 0.5f; // Кулдаун 0.5 секунды между пингами
+                RPC_SendPing(pingHit.point, PlayerName.ToString());
+            }
+        }
     }
 
     [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
@@ -365,7 +394,12 @@ public class PlayerController : NetworkBehaviour
         Vector3 pivotWithOffset = _pivotPos + rightOffset;
 
         float desiredDist = targetBaseDist;
-        if (Physics.SphereCast(pivotWithOffset, camCollisionRadius,
+        
+        // Защита камеры от проникновения в стены (учитывая высокий FOV)
+        // 1. Увеличиваем радиус SphereCast, чтобы учесть конусообразный фрустум камеры с высоким FOV
+        float actualCollisionRadius = Mathf.Max(camCollisionRadius, cam.nearClipPlane * 1.5f);
+
+        if (Physics.SphereCast(pivotWithOffset, actualCollisionRadius,
                                backDir, out RaycastHit hit,
                                targetBaseDist, camCollisionMask,
                                QueryTriggerInteraction.Ignore))
@@ -379,7 +413,15 @@ public class PlayerController : NetworkBehaviour
             _currentCamDist = Mathf.Lerp(_currentCamDist, desiredDist,
                                          camFollowSpeed * Time.deltaTime);
 
-        cam.transform.position = pivotWithOffset + backDir * _currentCamDist;
+        // Гарантируем, что камера не провалится в саму стену даже при подходе вплотную
+        Vector3 finalCamPos = pivotWithOffset + backDir * _currentCamDist;
+        if (Physics.CheckSphere(finalCamPos, cam.nearClipPlane * 1.1f, camCollisionMask, QueryTriggerInteraction.Ignore))
+        {
+             _currentCamDist = Mathf.Max(camMinDistance, _currentCamDist - cam.nearClipPlane * 1.5f);
+             finalCamPos = pivotWithOffset + backDir * _currentCamDist;
+        }
+
+        cam.transform.position = finalCamPos;
         cam.transform.rotation = Quaternion.Euler(_pitch, _yaw, 0f);
     }
 
@@ -520,7 +562,10 @@ public class PlayerController : NetworkBehaviour
         if (_isGrounded)
         {
             Vector3 vel = _velocity;
-            if (vel.y < 0f) vel.y = -2f;
+            // Делаем притяжение к земле СИЛЬНЫМ (-15f вместо -2f), чтобы персонаж 
+            // не отрывался от ступенек/склона при сбегании вниз (чтобы не было рывков!)
+            // Это не помешает ходьбе вверх, так как CC просто скользит по нормали.
+            if (vel.y <= 0f) vel.y = -15f; 
             _velocity = vel;
 
             if (_currentPressed.IsSet(NetworkInputButtons.Jump) && !_isCrouching)
@@ -533,6 +578,8 @@ public class PlayerController : NetworkBehaviour
 
         if (_isMantling) return;
 
+        // Применяем гравитацию только если НЕ на земле (и не цепляемся за лозу/уступ)
+        if (!_isGrounded)
         {
             Vector3 vel = _velocity;
             vel.y += gravity * Runner.DeltaTime;
@@ -592,21 +639,62 @@ public class PlayerController : NetworkBehaviour
         if (ledgeH < mantleMinHeight || ledgeH > mantleMaxHeight)
             return false;
 
-        _isMantling     = true;
-        _mantleProgress = 0f;
-        _mantleStartPos = transform.position;
-
         float feetToPivot = -_standCenter.y + _standHeight * 0.5f;
 
         float phase1FeetY = ledgeHit.point.y + 0.25f;
-        _mantleTopPos = new Vector3(transform.position.x, phase1FeetY + feetToPivot, transform.position.z);
+        Vector3 topPos = new Vector3(transform.position.x, phase1FeetY + feetToPivot, transform.position.z);
 
         float phase2FeetY = ledgeHit.point.y;
-        _mantleEndPos = new Vector3(
+        Vector3 endPos = new Vector3(
             ledgeHit.point.x + moveDir.x * mantleForwardStep,
             phase2FeetY + feetToPivot,
             ledgeHit.point.z + moveDir.z * mantleForwardStep
         );
+
+        // ── ЗАЩИТА ОТ ПРОХОЖДЕНИЯ СКВОЗЬ СТЕНЫ ──
+        int layerMask = ~0 & ~(1 << gameObject.layer);
+        
+        float safeRadius = _cc.radius * 0.8f;
+        
+        // 1. Проверяем путь СНИЗУ ВВЕРХ (чтобы не удариться головой о балкон или залезть в текстуру)
+        Vector3 startP1 = transform.position + _standCenter - Vector3.up * (_standHeight * 0.5f - safeRadius);
+        Vector3 startP2 = transform.position + _standCenter + Vector3.up * (_standHeight * 0.5f - safeRadius);
+        Vector3 dirToTop = topPos - transform.position;
+        if (Physics.CapsuleCast(startP1, startP2, safeRadius, dirToTop.normalized, out RaycastHit upHit, dirToTop.magnitude, layerMask, QueryTriggerInteraction.Ignore))
+        {
+            return false; // Заблокировано сверху
+        }
+
+        // 2. Проверяем не застрянем ли мы в высшей точке (topPos)
+        Vector3 topP1 = topPos + _standCenter - Vector3.up * (_standHeight * 0.5f - safeRadius);
+        Vector3 topP2 = topPos + _standCenter + Vector3.up * (_standHeight * 0.5f - safeRadius);
+        if (Physics.CheckCapsule(topP1, topP2, safeRadius, layerMask, QueryTriggerInteraction.Ignore))
+        {
+            return false; // Точка над уступом уже находится в текстуре
+        }
+
+        // 3. Плавно пытаемся продвинуться вперед (на сам уступ)
+        Vector3 dirToEnd = endPos - topPos;
+        float distToEnd = dirToEnd.magnitude;
+
+        if (distToEnd > 0.01f)
+        {
+            if (Physics.CapsuleCast(topP1, topP2, safeRadius, dirToEnd.normalized, out RaycastHit fwdHit, distToEnd, layerMask, QueryTriggerInteraction.Ignore))
+            {
+                // Если нету места чтобы перебросить хотя-бы малую часть тела — отменяем прыжок
+                if (fwdHit.distance < safeRadius * 0.5f) return false;
+
+                // Спасаем прыжок, но останавливаемся перед стеной
+                endPos = topPos + dirToEnd.normalized * Mathf.Max(0f, fwdHit.distance - 0.05f);
+            }
+        }
+
+        // Если все проверки пройдены — начинаем перемещение
+        _isMantling     = true;
+        _mantleProgress = 0f;
+        _mantleStartPos = transform.position;
+        _mantleTopPos   = topPos;
+        _mantleEndPos   = endPos;
 
         _velocity = Vector3.zero;
         return true;
@@ -768,5 +856,128 @@ public class PlayerController : NetworkBehaviour
     {
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible   = true;
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  PING SYSTEM
+    // ══════════════════════════════════════════════════════════════
+
+    [Rpc(RpcSources.InputAuthority, RpcTargets.All)]
+    public void RPC_SendPing(Vector3 pos, string pName)
+    {
+        if (Local != null)
+        {
+            Local.AddPingLocally(pos, pName);
+        }
+    }
+
+    private void AddPingLocally(Vector3 pos, string pName)
+    {
+        GeneratePingAssets();
+        _activePings.Add(new PingMarker { Position = pos, SpawnTime = Time.time, PlayerName = pName });
+        
+        // Воспроизводим звук локально, создавая временный AudioSource в месте пинга
+        AudioSource.PlayClipAtPoint(_proceduralPingSound, pos, 0.8f);
+    }
+
+    private void GeneratePingAssets()
+    {
+        if (_pingTexture != null) return;
+        
+        // 1. Процедурная текстура "ромбика" (Метка)
+        _pingTexture = new Texture2D(32, 32);
+        Color clear = new Color(0, 0, 0, 0);
+        for (int y = 0; y < 32; y++)
+        {
+            for (int x = 0; x < 32; x++)
+            {
+                float dx = Mathf.Abs(x - 16f);
+                float dy = Mathf.Abs(y - 16f);
+                if (dx + dy < 14f)
+                {
+                    if (dx + dy < 10f) _pingTexture.SetPixel(x, y, new Color(1f, 0.8f, 0.2f)); 
+                    else _pingTexture.SetPixel(x, y, Color.black);
+                }
+                else _pingTexture.SetPixel(x, y, clear);
+            }
+        }
+        _pingTexture.Apply();
+
+        // 2. Процедурный звук (Короткий "Бип")
+        int sampleRate = 44100;
+        float duration = 0.3f;
+        _proceduralPingSound = AudioClip.Create("Ping", (int)(sampleRate * duration), 1, sampleRate, false);
+        float[] samples = new float[_proceduralPingSound.samples];
+        for (int i = 0; i < samples.Length; i++)
+        {
+            float t = (float)i / sampleRate;
+            // Создаем приятный электронный звук
+            samples[i] = Mathf.Sin(t * 2f * Mathf.PI * 1000f) * Mathf.Exp(-t * 15f) * 0.5f;
+        }
+        _proceduralPingSound.SetData(samples, 0);
+    }
+
+    private void OnGUI()
+    {
+        if (!HasInputAuthority || cam == null || _activePings == null || _pingTexture == null) return;
+        
+        float currentTime = Time.time;
+        for (int i = _activePings.Count - 1; i >= 0; i--)
+        {
+            var ping = _activePings[i];
+            float age = currentTime - ping.SpawnTime;
+            float lifetime = 5f; // Живет 5 секунд
+
+            if (age >= lifetime)
+            {
+                _activePings.RemoveAt(i);
+                continue;
+            }
+
+            Vector3 screenPos = cam.WorldToScreenPoint(ping.Position);
+            if (screenPos.z < 0) continue; // Позади камеры
+
+            bool occluded = false;
+            Vector3 camPos = cam.transform.position;
+            Vector3 dir = ping.Position - camPos;
+            float dist = dir.magnitude;
+            
+            // Проверка преград (чтобы отследить "перекрытие" стенами)
+            if (Physics.Raycast(camPos, dir.normalized, dist - 0.2f, camCollisionMask, QueryTriggerInteraction.Ignore))
+            {
+                occluded = true;
+            }
+
+            // Плавное исчезновение
+            float alpha = 1f;
+            if (lifetime - age < 1f) alpha = lifetime - age; 
+
+            // Затемнение, если за стеной
+            Color drawColor = occluded ? new Color(0.3f, 0.3f, 0.3f, alpha * 0.5f) : new Color(1f, 1f, 1f, alpha);
+            Color oldColor = GUI.color;
+            GUI.color = drawColor;
+
+            // Легкая пульсация по размеру
+            float size = 32f;
+            float pulse = Mathf.Sin(age * 15f) * 0.15f + 1f; 
+            size *= pulse;
+
+            // Рисуем иконку
+            Rect rect = new Rect(screenPos.x - size / 2f, Screen.height - screenPos.y - size / 2f, size, size);
+            GUI.DrawTexture(rect, _pingTexture);
+
+            // Текст (С именем и дистанцией)
+            GUIStyle style = new GUIStyle(GUI.skin.label);
+            style.alignment = TextAnchor.UpperCenter;
+            style.normal.textColor = drawColor;
+            style.fontSize = 12;
+            style.fontStyle = FontStyle.Bold;
+            
+            Rect labelRect = new Rect(screenPos.x - 75f, Screen.height - screenPos.y + size / 2f, 150f, 40f);
+            int distInt = Mathf.RoundToInt(dist);
+            GUI.Label(labelRect, $"{ping.PlayerName}\n{distInt}m", style);
+
+            GUI.color = oldColor;
+        }
     }
 }
