@@ -81,6 +81,7 @@ public class PlayerController : NetworkBehaviour
     private Mouse    _mouse;
 
     [Networked] public NetworkString<_32> PlayerName { get; set; }
+    [Networked] public NetworkBool IsHostPlayer { get; set; }
 
     [Networked] private Vector3 _velocity { get; set; }
     [Networked] private NetworkBool _isGrounded { get; set; }
@@ -156,11 +157,26 @@ public class PlayerController : NetworkBehaviour
 
     public override void Spawned()
     {
+        bool inMainMenu = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMenu";
+
         if (cam != null)
         {
-            cam.gameObject.SetActive(HasInputAuthority);
+            cam.gameObject.SetActive(HasInputAuthority && !inMainMenu);
             AudioListener audioListener = cam.GetComponent<AudioListener>();
-            if (audioListener != null) audioListener.enabled = HasInputAuthority;
+            if (audioListener != null) audioListener.enabled = HasInputAuthority && !inMainMenu;
+        }
+
+        if (inMainMenu)
+        {
+            if (_cc) _cc.enabled = false;
+            if (_renderers != null) foreach (var r in _renderers) if (r) r.enabled = false;
+            
+            if (HasInputAuthority)
+            {
+                Local = this;
+                RPC_SetPlayerName(NetworkManager.LocalPlayerName);
+            }
+            return; // Пропускаем остальную инициализацию в меню
         }
 
         if (HasInputAuthority)
@@ -236,6 +252,7 @@ public class PlayerController : NetworkBehaviour
     private void Update()
     {
         if (Object == null || !Object.IsValid) return;
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMenu") return;
 
         ApplyColliderTransition();
 
@@ -301,6 +318,8 @@ public class PlayerController : NetworkBehaviour
 
     public override void Render()
     {
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMenu") return;
+
         if (nameTag != null)
         {
             if (HasInputAuthority)
@@ -322,6 +341,7 @@ public class PlayerController : NetworkBehaviour
     private void LateUpdate()
     {
         if (Object == null || !Object.IsValid) return;
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMenu") return;
         if (!HasInputAuthority || _mouse == null) return;
         PositionCamera();
     }
@@ -427,6 +447,8 @@ public class PlayerController : NetworkBehaviour
 
     public override void FixedUpdateNetwork()
     {
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMenu") return;
+
         if (GetInput(out NetworkInputData input))
         {
             _currentInput   = input;

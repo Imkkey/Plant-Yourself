@@ -96,7 +96,10 @@ public class PlantGrower : NetworkBehaviour
             }
             else if (!IsRetracting)
             {
-                StartGrowth(input);
+                if (IsOnSoil())
+                {
+                    StartGrowth(input);
+                }
             }
         }
 
@@ -108,6 +111,38 @@ public class PlantGrower : NetworkBehaviour
         {
             UpdateGrowth(input);
         }
+    }
+
+    private bool IsOnSoil()
+    {
+        // Не используем маску слоев (используем ~0), так как игрок и пол могут быть на одном слое (Default).
+        // Вместо этого просто игнорируем коллайдеры с тем же root'ом, что и у игрока.
+        var hits = Physics.SphereCastAll(transform.position + Vector3.up * 0.5f, 0.3f, Vector3.down, 1.5f, ~0, QueryTriggerInteraction.Ignore);
+        
+        foreach (var hit in hits)
+        {
+            // Игнорируем себя
+            if (hit.collider.transform.root == transform.root) continue;
+            if (hit.collider.isTrigger) continue;
+
+            // Проверка по тегам
+            bool isSoilTag = false;
+            try
+            {
+                if (hit.collider.CompareTag("Soil") || hit.collider.CompareTag("Ground")) isSoilTag = true;
+            }
+            catch { }
+
+            // Проверка по имени объекта
+            string objName = hit.collider.gameObject.name.ToLower();
+            if (isSoilTag || objName.Contains("soil") ||
+                objName.Contains("почва") || objName.Contains("земля") || 
+                objName.Contains("dirt") || objName.Contains("grass") || objName.Contains("terrain"))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void StartGrowth(NetworkInputData input)
@@ -213,8 +248,71 @@ public class PlantGrower : NetworkBehaviour
                 Quaternion spawnRot;
                 CalculateGrowthDirection(input, out growDir, out spawnRot);
 
-                _growthHeadPos += growDir * growthSpeed * Runner.DeltaTime;
-                _currentGrowthDist += growthSpeed * Runner.DeltaTime;
+                float moveDist = growthSpeed * Runner.DeltaTime;
+
+                // --- КОЛЛИЗИИ СО СТЕНАМИ ---
+                if (CurrentPlant == PlantType.Oak)
+                {
+                    // Для дуба - скользим по стенам, чтобы не застревать намертво
+                    if (Physics.SphereCast(_growthHeadPos, 0.4f, growDir, out RaycastHit hit, moveDist * 2f + 0.1f, ~0, QueryTriggerInteraction.Ignore))
+                    {
+                        if (hit.collider.transform.root != transform.root && 
+                            (hit.collider.GetComponentInParent<NetworkBehaviour>() == null || hit.collider.gameObject.isStatic))
+                        {
+                            Vector3 slideDir = Vector3.ProjectOnPlane(growDir, hit.normal).normalized;
+                            
+                            // Проверка на внутренний угол / вторую стену
+                            if (Physics.SphereCast(_growthHeadPos, 0.4f, slideDir, out RaycastHit hit2, moveDist * 2f + 0.1f, ~0, QueryTriggerInteraction.Ignore))
+                            {
+                                if (hit2.collider.transform.root != transform.root && 
+                                    (hit2.collider.GetComponentInParent<NetworkBehaviour>() == null || hit2.collider.gameObject.isStatic))
+                                {
+                                    slideDir = Vector3.ProjectOnPlane(slideDir, hit2.normal).normalized;
+                                }
+                            }
+                            
+                            if (slideDir.sqrMagnitude > 0.01f)
+                            {
+                                growDir = slideDir;
+                            }
+                        }
+                    }
+                }
+                else if (CurrentPlant == PlantType.Vine)
+                {
+                    // Для лозы - если упирается прямо в стену, меняет направление на свободное
+                    if (Physics.SphereCast(_growthHeadPos, 0.25f, growDir, out RaycastHit hit, moveDist * 1.5f + 0.15f, ~0, QueryTriggerInteraction.Ignore))
+                    {
+                        if (hit.collider.transform.root != transform.root && 
+                            (hit.collider.GetComponentInParent<NetworkBehaviour>() == null || hit.collider.gameObject.isStatic))
+                        {
+                            Vector3 right = spawnRot * Vector3.right;
+                            Vector3 left = -right;
+                            Vector3 back = -growDir;
+
+                            float rightOpen = GetOpenDist(_growthHeadPos, right);
+                            float leftOpen = GetOpenDist(_growthHeadPos, left);
+
+                            if (rightOpen > 0.5f || leftOpen > 0.5f)
+                            {
+                                growDir = (rightOpen > leftOpen) ? right : left;
+                            }
+                            else
+                            {
+                                growDir = back;
+                            }
+                            
+                            // Запоминаем новое направление для следующих кадров
+                            _initialGrowthDir = growDir.normalized; 
+                            // Немного отодвигаем назад, чтобы лоза не застряла в следующем кадре
+                            _growthHeadPos += hit.normal * 0.15f;
+                        }
+                    }
+                }
+                // -----------------------------
+
+                _growthHeadPos += growDir * moveDist;
+                _currentGrowthDist += moveDist;
 
                 if (CurrentPlant == PlantType.Vine)
                 {
@@ -236,6 +334,19 @@ public class PlantGrower : NetworkBehaviour
         {
             Fertilizer = Mathf.Min(100f, Fertilizer + Runner.DeltaTime * 5f);
         }
+    }
+
+    private float GetOpenDist(Vector3 pos, Vector3 dir)
+    {
+        if (Physics.SphereCast(pos, 0.3f, dir, out RaycastHit hit, 3f, ~0, QueryTriggerInteraction.Ignore))
+        {
+            if (hit.collider.transform.root != transform.root && 
+                (hit.collider.GetComponentInParent<NetworkBehaviour>() == null || hit.collider.gameObject.isStatic))
+            {
+                return hit.distance;
+            }
+        }
+        return 3f; // Место открыто
     }
 
     private void CalculateGrowthDirection(NetworkInputData input, out Vector3 growDir, out Quaternion spawnRot)
@@ -329,6 +440,8 @@ public class PlantGrower : NetworkBehaviour
         {
             if (pressed.IsSet(NetworkInputButtons.Action))
             {
+                if (!IsOnSoil()) return; // Можно расти ТОЛЬКО на почве/земле
+
                 // Enter Chamomile form
                 InChamomileForm = true;
                 IsGrowing = true; 

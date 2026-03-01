@@ -101,4 +101,57 @@ public class GameStatsUI : MonoBehaviour
 
         statsText.text = text;
     }
+    public void Disconnect()
+    {
+        if (NetworkManager.Instance != null)
+        {
+            NetworkManager.Instance.Disconnect();
+        }
+        else if (_runner != null)
+        {
+            _runner.Shutdown();
+        }
+        else
+        {
+            UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
+        }
+    }
+
+    [Header("Панель выбора растения (для кнопок)")]
+    [Tooltip("Необязательно. Если указать панель, кнопки выбора её закроют и вернут курсор в игру")]
+    [SerializeField] private GameObject plantSelectionPanel;
+
+    public void SelectOak()
+    {
+        SelectPlant(PlantType.Oak);
+    }
+
+    public void SelectVine()
+    {
+        SelectPlant(PlantType.Vine);
+    }
+
+    public void SelectChamomile()
+    {
+        SelectPlant(PlantType.Chamomile);
+    }
+
+    private void SelectPlant(PlantType type)
+    {
+        if (PlayerController.Local != null)
+        {
+            PlayerController.Local.RPC_SetInitialPlant(type);
+
+            // Закрываем панель выбора растения
+            if (PlantSelectionUI.Instance != null)
+            {
+                PlantSelectionUI.Instance.Hide();
+            }
+            else if (plantSelectionPanel != null)
+            {
+                plantSelectionPanel.SetActive(false);
+                PlayerController.Local.LockCursor();
+            }
+        }
+    }
 }

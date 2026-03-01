@@ -1,90 +1,45 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
 using Fusion;
 using Fusion.Sockets;
 using System;
+using UnityEngine.SceneManagement;
 
-/// <summary>
-/// NetworkManager — Photon Fusion 2
-/// ──────────────────────────────────────────────────────────────
-/// Настройка:
-///   1. Создай пустой GameObject "NetworkManager" на сцене
-///   2. Повесь этот скрипт на него
-///   3. Создай Player Prefab:
-///      - Добавь компонент NetworkObject на объект игрока
-///      - Убедись что PlayerController использует [Networked] свойства
-///      - Перетащи prefab в поле "Player Prefab" в Inspector
-///   4. Заполни UI ссылки в Inspector
-/// </summary>
 public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 {
-    [Header("── Сеть ─────────────────────────────────")]
-
-    [Tooltip("Prefab игрока с компонентом NetworkObject")]
-    [SerializeField] private NetworkPrefabRef playerPrefab;
-
-    [Tooltip("Название комнаты по умолчанию")]
-    [SerializeField] private string defaultRoomName = "GameRoom";
-
-    [Header("── UI ──────────────────────────────────")]
-
-    [SerializeField] private GameObject  lobbyPanel;
-    [SerializeField] private TMP_InputField roomNameInput;
-    [SerializeField] private TMP_InputField nicknameInput;
-    [SerializeField] private Button      hostButton;
-    [SerializeField] private Button      joinButton;
-    [SerializeField] private Button      disconnectButton;
-    [SerializeField] private TMP_Text    statusText;
-
-    // ── Внутренние переменные ────────────────────────────────────
-
+    public static NetworkManager Instance;
     public static string LocalPlayerName = "Player";
+
+    [Header("── Сеть ─────────────────────────────────")]
+    [Tooltip("Prefab игрока с компонентом NetworkObject")]
+    public NetworkPrefabRef playerPrefab;
+
     private NetworkRunner _runner;
-
-    // Хранит спавненных игроков: PlayerRef → объект
-    private readonly Dictionary<PlayerRef, NetworkObject> _spawnedPlayers
-        = new Dictionary<PlayerRef, NetworkObject>();
-
-    // ── Unity Lifecycle ──────────────────────────────────────────
+    private readonly Dictionary<PlayerRef, NetworkObject> _spawnedPlayers = new Dictionary<PlayerRef, NetworkObject>();
 
     private void Awake()
     {
-        // Привязываем кнопки
-        if (hostButton)       hostButton.onClick.AddListener(OnClickHost);
-        if (joinButton)       joinButton.onClick.AddListener(OnClickJoin);
-        if (disconnectButton) disconnectButton.onClick.AddListener(OnClickDisconnect);
-
-        if (PlayerPrefs.HasKey("SavedNickname") && nicknameInput != null)
+        if (Instance != null && Instance != this)
         {
-            nicknameInput.text = PlayerPrefs.GetString("SavedNickname");
-            LocalPlayerName = nicknameInput.text;
+            Destroy(gameObject);
+            return;
         }
 
-        ShowLobby(true);
-        SetStatus("Введи название комнаты и нажми Host или Join");
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
     }
 
-    // ── UI Handlers ──────────────────────────────────────────────
-
-    private void OnClickHost()
+    public void StartHost(string roomName)
     {
-        SaveNickname();
-        string room = GetRoomName();
-        SetStatus($"Создаем сервер (Host Mode): {room}...");
-        StartGame(GameMode.Host, room);
+        StartGame(GameMode.Host, roomName);
     }
 
-    private void OnClickJoin()
+    public void StartClient(string roomName)
     {
-        SaveNickname();
-        string room = GetRoomName();
-        SetStatus($"Подключаемся к серверу (Client Mode): {room}...");
-        StartGame(GameMode.Client, room);
+        StartGame(GameMode.Client, roomName);
     }
 
-    private void OnClickDisconnect()
+    public void Disconnect()
     {
         if (_runner != null)
         {
@@ -92,137 +47,96 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
             _runner = null;
         }
         _spawnedPlayers.Clear();
-        ShowLobby(true);
-        SetStatus("Отключён. Введи название комнаты.");
     }
-
-    private string GetRoomName()
-    {
-        if (roomNameInput != null && !string.IsNullOrEmpty(roomNameInput.text))
-            return roomNameInput.text.Trim();
-        return defaultRoomName;
-    }
-
-    private void SaveNickname()
-    {
-        if (nicknameInput != null && !string.IsNullOrWhiteSpace(nicknameInput.text))
-        {
-            LocalPlayerName = nicknameInput.text.Trim();
-        }
-        else
-        {
-            LocalPlayerName = "Player " + UnityEngine.Random.Range(1000, 9999);
-            if (nicknameInput != null)
-                nicknameInput.text = LocalPlayerName;
-        }
-
-        PlayerPrefs.SetString("SavedNickname", LocalPlayerName);
-        PlayerPrefs.Save();
-    }
-
-    // ── Запуск сессии ────────────────────────────────────────────
 
     private async void StartGame(GameMode mode, string roomName)
     {
-        // Блокируем кнопки на время подключения
-        if (hostButton) hostButton.interactable = false;
-        if (joinButton) joinButton.interactable = false;
-
-        // Удаляем старый Session, если он завис после неудачного входа
-        var oldSession = this.transform.Find("Session");
-        if (oldSession != null)
-        {
-            Destroy(oldSession.gameObject);
-        }
-
         if (_runner != null)
         {
             _ = _runner.Shutdown();
             _runner = null;
         }
 
-        // Создаем дочерний GameObject специально для Runner,
-        // чтобы избежать багов с двойными компонентами при переподключении.
         var runnerGo = new GameObject("Session");
         runnerGo.transform.SetParent(this.transform);
 
         _runner = runnerGo.AddComponent<NetworkRunner>();
-        _runner.ProvideInput = true;   // этот клиент отправляет Input
+        _runner.ProvideInput = true;
 
         var sceneManager = runnerGo.AddComponent<NetworkSceneManagerDefault>();
 
-        // Настройка региона
         var appSettings = Fusion.Photon.Realtime.PhotonAppSettings.Global.AppSettings.GetCopy();
-        appSettings.FixedRegion = "eu"; // Жестко задаем регион Европа
+        appSettings.FixedRegion = "eu";
 
         var args = new StartGameArgs
         {
-            GameMode       = mode,
-            SessionName    = roomName,
-            // ── КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: СВЕТ И SKYBOX ────────
-            // Убрали загрузку сцены через (Scene = ...).
-            // Запуск сети произойдёт прямо в текущей сцене без её перезагрузки.
-            // Это спасает запечённый свет (тени) и скайбокс от "синего экрана".
-            SceneManager   = sceneManager,
+            GameMode = mode,
+            SessionName = roomName,
+            SceneManager = sceneManager,
             CustomPhotonAppSettings = appSettings
         };
 
-        // Т.к. Runner теперь на дочернем объекте, ему нужно явно указать, 
-        // где находятся колбеки (на этом скрипте NetworkManager)
         _runner.AddCallbacks(this);
+        await _runner.StartGame(args);
+    }
 
-        var result = await _runner.StartGame(args);
+    // ── Helper API для кастомного UI Лобби ────────────────────────────
 
-        // Разблокируем кнопки
-        if (hostButton) hostButton.interactable = true;
-        if (joinButton) joinButton.interactable = true;
+    public bool IsSessionActive()
+    {
+        return _runner != null;
+    }
 
-        if (result.Ok)
+    public string GetRoomCode()
+    {
+        return _runner != null && _runner.IsRunning ? _runner.SessionInfo.Name : "";
+    }
+
+    public bool IsServer()
+    {
+        return _runner != null && _runner.IsServer;
+    }
+
+    public void StartGameScene(string sceneName = "GameScene")
+    {
+        if (_runner != null && _runner.IsServer)
         {
-            ShowLobby(false);
-            SetStatus(mode == GameMode.Host
-                ? $"Хост: {roomName}  |  Ожидаем игроков..."
-                : $"Подключён к: {roomName}");
+            // Переход на игровую сцену
+            _runner.LoadScene(sceneName, new LoadSceneParameters(LoadSceneMode.Single));
         }
-        else
+    }
+
+    public void KickPlayer(PlayerRef player)
+    {
+        if (_runner != null && _runner.IsServer && player != _runner.LocalPlayer)
         {
-            SetStatus($"Ошибка подключения: {result.ShutdownReason}");
-            if (_runner != null) 
-            {
-                _ = _runner.Shutdown();
-                _runner = null;
-            }
+            _runner.Disconnect(player);
         }
     }
 
     // ── INetworkRunnerCallbacks ──────────────────────────────────
-
-    /// Вызывается когда игрок подключается — спавним его объект
     public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
         if (runner.IsServer)
         {
+            // Спавним игрока. Если мы в MainMenu, PlayerController сам спрячет физику и модель.
             Vector3 spawnPos = new Vector3(UnityEngine.Random.Range(-5f, 5f), 1f, UnityEngine.Random.Range(-5f, 5f));
-            NetworkObject no = runner.Spawn(playerPrefab, spawnPos, Quaternion.identity, player);
+            NetworkObject no = runner.Spawn(playerPrefab, spawnPos, Quaternion.identity, player, (r, o) => {
+                o.GetComponent<PlayerController>().IsHostPlayer = (player == r.LocalPlayer);
+            });
             _spawnedPlayers[player] = no;
         }
-
-        SetStatus($"Игрок {player.PlayerId} присоединился. Всего: {_spawnedPlayers.Count}");
     }
 
-    /// Вызывается когда игрок отключается — удаляем его объект
     public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
     {
         if (_spawnedPlayers.TryGetValue(player, out NetworkObject playerObj))
         {
-            runner.Despawn(playerObj);
+            if (playerObj != null) runner.Despawn(playerObj);
             _spawnedPlayers.Remove(player);
         }
-
-        SetStatus($"Игрок {player.PlayerId} отключился. Осталось: {_spawnedPlayers.Count}");
     }
 
-    /// Сбор Input от локального игрока
     public void OnInput(NetworkRunner runner, NetworkInput input)
     {
         if (PlayerController.Local != null)
@@ -231,59 +145,60 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         }
     }
 
+    public void OnSceneLoadDone(NetworkRunner runner)
+    {
+        // Когда запускается игровая сцена через _runner.LoadScene,
+        // старые PlayerController'ы (которые были спрятаны в MainMenu) удаляются Юнити.
+        // Поэтому здесь Сервер перепроверяет ВСЕХ игроков и переспавнивает их для игры.
+        if (runner.IsServer)
+        {
+            if (SceneManager.GetActiveScene().name == "GameScene")
+            {
+                foreach (var ply in runner.ActivePlayers)
+                {
+                    // Игрок мог существовать, но его NetworkObject был уничтожен сменой сцены
+                    if (!_spawnedPlayers.ContainsKey(ply) || _spawnedPlayers[ply] == null || !_spawnedPlayers[ply].IsValid)
+                    {
+                        Vector3 spawnPos = new Vector3(UnityEngine.Random.Range(-5f, 5f), 1f, UnityEngine.Random.Range(-5f, 5f));
+                        NetworkObject no = runner.Spawn(playerPrefab, spawnPos, Quaternion.identity, ply, (r, o) => {
+                            o.GetComponent<PlayerController>().IsHostPlayer = (ply == r.LocalPlayer);
+                        });
+                        _spawnedPlayers[ply] = no;
+                    }
+                }
+            }
+        }
+    }
+
     public void OnShutdown(NetworkRunner runner, ShutdownReason reason)
     {
-        SetStatus($"Сессия завершена: {reason}");
-        ShowLobby(true);
         _spawnedPlayers.Clear();
-
-        if (_runner == runner)
-        {
-            _runner = null;
-        }
-
+        if (_runner == runner) _runner = null;
         if (runner != null && runner.gameObject != null && runner.gameObject.name == "Session")
         {
             Destroy(runner.gameObject);
         }
+
+        // Если хост кикает нас или выходим, мы возвращаемся в MainMenu
+        if (SceneManager.GetActiveScene().name != "MainMenu")
+        {
+            SceneManager.LoadScene("MainMenu");
+        }
     }
 
-    public void OnConnectedToServer(NetworkRunner runner)
-    {
-        SetStatus("Подключён к серверу!");
-    }
-
-    public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason)
-        => SetStatus($"Отключён от сервера: {reason}");
-
-    public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason)
-        => SetStatus($"Не удалось подключиться: {reason}");
-
-    // Остальные callbacks (оставляем пустыми, добавим по мере надобности)
-    public void OnInputMissing(NetworkRunner r, PlayerRef p, NetworkInput i)      { }
+    // Boilerplate (Пустые)
+    public void OnConnectedToServer(NetworkRunner runner) { }
+    public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason) { }
+    public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason) { }
+    public void OnInputMissing(NetworkRunner r, PlayerRef p, NetworkInput i) { }
     public void OnConnectRequest(NetworkRunner r, NetworkRunnerCallbackArgs.ConnectRequest req, byte[] token) { }
     public void OnUserSimulationMessage(NetworkRunner r, SimulationMessagePtr msg) { }
-    public void OnSessionListUpdated(NetworkRunner r, List<SessionInfo> list)     { }
+    public void OnSessionListUpdated(NetworkRunner r, List<SessionInfo> list) { }
     public void OnCustomAuthenticationResponse(NetworkRunner r, Dictionary<string, object> data) { }
-    public void OnHostMigration(NetworkRunner r, HostMigrationToken t)            { }
+    public void OnHostMigration(NetworkRunner r, HostMigrationToken t) { }
     public void OnReliableDataReceived(NetworkRunner r, PlayerRef p, ReliableKey k, ArraySegment<byte> d) { }
     public void OnReliableDataProgress(NetworkRunner r, PlayerRef p, ReliableKey k, float progress) { }
-    public void OnSceneLoadDone(NetworkRunner r)   { }
-    public void OnSceneLoadStart(NetworkRunner r)  { }
-    public void OnObjectExitAOI(NetworkRunner r, NetworkObject o, PlayerRef p)    { }
-    public void OnObjectEnterAOI(NetworkRunner r, NetworkObject o, PlayerRef p)   { }
-
-    // ── Helpers ──────────────────────────────────────────────────
-
-    private void ShowLobby(bool show)
-    {
-        if (lobbyPanel) lobbyPanel.SetActive(show);
-        if (disconnectButton) disconnectButton.gameObject.SetActive(!show);
-    }
-
-    private void SetStatus(string msg)
-    {
-        if (statusText) statusText.text = msg;
-        Debug.Log($"[Network] {msg}");
-    }
+    public void OnSceneLoadStart(NetworkRunner r) { }
+    public void OnObjectExitAOI(NetworkRunner r, NetworkObject o, PlayerRef p) { }
+    public void OnObjectEnterAOI(NetworkRunner r, NetworkObject o, PlayerRef p) { }
 }
