@@ -68,9 +68,10 @@ public class PlayerController : NetworkBehaviour
 
     [Header("── UI Игрока ──────────────────────────")]
     [SerializeField] private TMPro.TMP_Text nameTag;
+    [SerializeField] private GameObject voiceIcon; // Иконка, когда игрок говорит
 
     [Header("── Камера (Растение) ──────────────")]
-    [SerializeField] private float treeCamDistance = 12f;
+
 
     public static PlayerController Local { get; private set; }
 
@@ -197,6 +198,49 @@ public class PlayerController : NetworkBehaviour
             RPC_SetPlayerName(NetworkManager.LocalPlayerName);
         }
 
+        // ── Настройка микрофона из PlayerPrefs ──
+        if (HasInputAuthority)
+        {
+            Photon.Voice.Unity.Recorder recorder = GetComponent<Photon.Voice.Unity.Recorder>();
+            if (recorder != null)
+            {
+                // Принудительно выключаем эхо, если оно осталось включенным в префабе
+                recorder.DebugEchoMode = false;
+
+                string savedMic = PlayerPrefs.GetString("SelectedMicrophone", "");
+                if (string.IsNullOrEmpty(savedMic))
+                {
+                    recorder.MicrophoneDevice = new Photon.Voice.DeviceInfo("[Default]");
+                }
+                else
+                {
+                    recorder.MicrophoneDevice = new Photon.Voice.DeviceInfo(savedMic);
+                }
+            }
+
+            // Отключаем Speaker у самого себя, чтобы случайно не воспроизводить свой же голос или шум 
+            Photon.Voice.Unity.Speaker speaker = GetComponent<Photon.Voice.Unity.Speaker>();
+            if (speaker != null)
+            {
+                speaker.enabled = false;
+            }
+        }
+        else
+        {
+            // Устанавливаем громкость голоса других игроков из настроек
+            AudioSource audioSource = GetComponent<AudioSource>();
+            if (audioSource != null)
+            {
+                // Для 3D звука важно:
+                audioSource.spatialBlend = 1f; // Полное 3D (отдаление зависит от расстояния)
+                audioSource.rolloffMode = AudioRolloffMode.Linear;
+                audioSource.minDistance = 2f;
+                audioSource.maxDistance = 30f; // На каком расстоянии перестает быть слышно
+                
+                audioSource.volume = PlayerPrefs.GetFloat("VoiceVolume", 1f);
+            }
+        }
+        
         if (HasStateAuthority)
         {
             _dashCharges = maxDashCharges;
@@ -325,6 +369,7 @@ public class PlayerController : NetworkBehaviour
             if (HasInputAuthority)
             {
                 if (nameTag.gameObject.activeSelf) nameTag.gameObject.SetActive(false);
+                if (voiceIcon != null && voiceIcon.activeSelf) voiceIcon.SetActive(false);
                 return;
             }
 
@@ -334,6 +379,20 @@ public class PlayerController : NetworkBehaviour
             {
                 // Поворачиваем имя так, чтобы оно смотрело на камеру (разворачиваем на 180 от камеры, чтобы текст не был зеркальным)
                 nameTag.transform.rotation = Quaternion.LookRotation(nameTag.transform.position - Camera.main.transform.position);
+            }
+        }
+
+        // Логика отображения иконки голоса (только для других игроков)
+        if (voiceIcon != null && !HasInputAuthority)
+        {
+            var voiceObj = GetComponent<Photon.Voice.Fusion.VoiceNetworkObject>();
+            if (voiceObj != null)
+            {
+                bool isSpeaking = voiceObj.IsSpeaking;
+                if (voiceIcon.activeSelf != isSpeaking)
+                {
+                    voiceIcon.SetActive(isSpeaking);
+                }
             }
         }
     }
@@ -633,6 +692,11 @@ public class PlayerController : NetworkBehaviour
                 // Игнорируем самого себя, других игроков, пули и предметы
                 if (hit.collider.transform.root == transform.root) continue;
                 if (hit.collider.GetComponentInParent<NetworkBehaviour>() != null && !hit.collider.gameObject.isStatic)
+                    continue;
+
+                // Проверяем наклоны. Если нормаль поверхности слишком "смотрит вверх"
+                // (например склон горы / пандус), то не воспринимаем это как стену для Mantle (ограничение ~75 градусов).
+                if (hit.normal.y > 0.25f)
                     continue;
 
                 wallHit  = hit;

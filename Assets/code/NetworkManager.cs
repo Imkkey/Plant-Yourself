@@ -27,16 +27,19 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
         Instance = this;
         DontDestroyOnLoad(gameObject);
+
+        // Применяем глобальную громкость сразу при старте игры
+        AudioListener.volume = PlayerPrefs.GetFloat("MasterVolume", 1f);
     }
 
-    public void StartHost(string roomName)
+    public async System.Threading.Tasks.Task<bool> StartHost(string roomName)
     {
-        StartGame(GameMode.Host, roomName);
+        return await StartGame(GameMode.Host, roomName);
     }
 
-    public void StartClient(string roomName)
+    public async System.Threading.Tasks.Task<bool> StartClient(string roomName)
     {
-        StartGame(GameMode.Client, roomName);
+        return await StartGame(GameMode.Client, roomName);
     }
 
     public void Disconnect()
@@ -49,7 +52,7 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         _spawnedPlayers.Clear();
     }
 
-    private async void StartGame(GameMode mode, string roomName)
+    private async System.Threading.Tasks.Task<bool> StartGame(GameMode mode, string roomName)
     {
         if (_runner != null)
         {
@@ -65,6 +68,10 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
         var sceneManager = runnerGo.AddComponent<NetworkSceneManagerDefault>();
 
+        // ── Добавляем VoiceChat клиент прямо на Сессию (чтобы Игроки его могли найти) ──
+        var voiceClient = runnerGo.AddComponent<Photon.Voice.Fusion.FusionVoiceClient>();
+        voiceClient.UseFusionAppSettings = true;
+
         var appSettings = Fusion.Photon.Realtime.PhotonAppSettings.Global.AppSettings.GetCopy();
         appSettings.FixedRegion = "eu";
 
@@ -77,7 +84,23 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         };
 
         _runner.AddCallbacks(this);
-        await _runner.StartGame(args);
+        _runner.AddCallbacks(voiceClient); // <- Подключаем войс чат к событиям бекенда Fusion
+        
+        var result = await _runner.StartGame(args);
+
+        if (!result.Ok)
+        {
+            Debug.LogWarning($"Failed to start/join game: {result.ShutdownReason}");
+            // Если комната не найдена или другая ошибка сети
+            if (_runner != null)
+            {
+                _runner.Shutdown();
+                _runner = null;
+            }
+            return false;
+        }
+
+        return true;
     }
 
     // ── Helper API для кастомного UI Лобби ────────────────────────────

@@ -65,7 +65,7 @@ public class MainMenuUI : MonoBehaviour
         if (btnHost != null) btnHost.onClick.AddListener(() => StartGame("Host"));
         if (btnJoin != null) btnJoin.onClick.AddListener(() => StartGame("Client"));
 
-        // Восстанавливаем только никнейм (комнату не восстанавливаем, чтобы не путать игрока)
+        // Восстанавливаем만 никнейм
         if (PlayerPrefs.HasKey("SavedNickname") && inputNickname != null)
             inputNickname.text = PlayerPrefs.GetString("SavedNickname");
 
@@ -125,7 +125,7 @@ public class MainMenuUI : MonoBehaviour
             if (btnStartGame != null) btnStartGame.interactable = isHost;
 
             // Обновление списка игроков и кнопок кика
-            PlayerController[] players = FindObjectsOfType<PlayerController>();
+            PlayerController[] players = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
 
             // Сортируем игроков: Хост всегда первый (сверху), остальные по времени захода (по их сетевому ID)
             System.Array.Sort(players, (a, b) => {
@@ -222,7 +222,7 @@ public class MainMenuUI : MonoBehaviour
         }
     }
 
-    private void StartGame(string mode)
+    private async void StartGame(string mode)
     {
         if (NetworkManager.Instance == null)
         {
@@ -241,16 +241,16 @@ public class MainMenuUI : MonoBehaviour
         }
 
         PlayerPrefs.SetString("SavedNickname", NetworkManager.LocalPlayerName);
+        PlayerPrefs.Save();
 
-        // 2. Открываем наше Кастомное Лобби (оно просто появится поверх остального UI)
-        if (panelLobby != null) panelLobby.SetActive(true);
-
-        // 3. Запускаем сеть напрямую в этой же сцене!
+        // 2. Пробуем запустить сервер или подключиться к игре
+        bool success = false;
+        
         if (mode == "Host")
         {
             // Случайный код из 4 цифр для друга
             string randomCode = Random.Range(1000, 10000).ToString();
-            NetworkManager.Instance.StartHost(randomCode);
+            success = await NetworkManager.Instance.StartHost(randomCode);
         }
         else if (mode == "Client")
         {
@@ -259,12 +259,21 @@ public class MainMenuUI : MonoBehaviour
             if (inputRoomName != null && !string.IsNullOrWhiteSpace(inputRoomName.text))
             {
                 roomCode = inputRoomName.text.Trim();
-                PlayerPrefs.SetString("SavedRoomName", roomCode);
             }
-            NetworkManager.Instance.StartClient(roomCode);
+            success = await NetworkManager.Instance.StartClient(roomCode);
         }
 
-        PlayerPrefs.Save();
+        // 3. Если подключение успешно - открываем наш UI Лобби
+        if (success)
+        {
+            if (panelLobby != null) panelLobby.SetActive(true);
+        }
+        else
+        {
+            Debug.LogWarning("Не удалось войти в игру (комната не найдена или ошибка сети).");
+            // Если была открыта, на всякий случай закрываем (должно быть закрыто)
+            if (panelLobby != null) panelLobby.SetActive(false);
+        }
     }
 
     private void ExitGame()

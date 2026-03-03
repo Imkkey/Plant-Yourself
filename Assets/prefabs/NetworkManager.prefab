@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7767665936060328024}
   - component: {fileID: 5548908539483104279}
+  - component: {fileID: 5582694146087700362}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -46,11 +47,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::NetworkManager
   playerPrefab:
     RawGuidValue: 54cab6b1f1b26c74cb80accb27c54807
-  defaultRoomName: GameRoom
-  lobbyPanel: {fileID: 0}
-  roomNameInput: {fileID: 0}
-  nicknameInput: {fileID: 0}
-  hostButton: {fileID: 0}
-  joinButton: {fileID: 0}
-  disconnectButton: {fileID: 0}
-  statusText: {fileID: 0}
+--- !u!114 &5582694146087700362
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5549142419382254020}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1199893898, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkRunner

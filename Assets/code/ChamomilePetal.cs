@@ -4,7 +4,6 @@ using Fusion;
 public class ChamomilePetal : NetworkBehaviour
 {
     [Header("Petal Falling Mechanics")]
-    [SerializeField] private float jumpForce = 10f;
     [SerializeField] private float fallGravity = 3f;
     [SerializeField] private float flutterSpeed = 2f;
     [SerializeField] private float flutterAmplitude = 1.5f;
