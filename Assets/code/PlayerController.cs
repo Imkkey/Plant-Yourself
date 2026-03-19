@@ -78,6 +78,7 @@ public class PlayerController : NetworkBehaviour
     // Ссылки на компоненты
     private CharacterController _cc;
     private PlantGrower _grower;
+    private InventorySystem _inventory;
     private Keyboard _kb;
     private Mouse    _mouse;
 
@@ -141,12 +142,19 @@ public class PlayerController : NetworkBehaviour
     {
         _cc = GetComponent<CharacterController>();
         _grower = GetComponent<PlantGrower>();
+        _inventory = GetComponent<InventorySystem>();
         _renderers = GetComponentsInChildren<Renderer>(true);
 
         _standHeight    = _cc.height;
         _standCenter    = _cc.center;
         _targetCCHeight = _cc.height;
         _targetCCCenter = _cc.center;
+
+        // ── НАСТРОЙКА КОЛЛИЗИЙ ИГРОКОВ (АБСОЛЮТНАЯ ПЛАВНОСТЬ) ──
+        // Выделяем игрокам уникальный физический слой (10), чтобы движок Unity аппаратно
+        // игнорировал расчеты коллизий ПЕРЕД началом любого движения, а не после.
+        gameObject.layer = 10;
+        Physics.IgnoreLayerCollision(10, 10, true);
 
         if (crouchHeight >= _standHeight)
             crouchHeight = _standHeight * 0.5f;
@@ -188,7 +196,11 @@ public class PlayerController : NetworkBehaviour
             _pitch           = 15f;
             _currentCamDist  = camDistance;
             _pivotPos        = transform.position + Vector3.up * camPivotHeight;
-            if (cam != null) camCollisionMask &= ~(1 << gameObject.layer);
+            if (cam != null) 
+            {
+                camCollisionMask &= ~(1 << gameObject.layer);
+                camCollisionMask &= ~(1 << 10); // Игнорируем всех остальных игроков камерой
+            }
 
             if (PlantSelectionUI.Instance != null && _grower != null && !_grower.IsPlantSelected)
             {
@@ -197,6 +209,8 @@ public class PlayerController : NetworkBehaviour
 
             RPC_SetPlayerName(NetworkManager.LocalPlayerName);
         }
+
+        // ── Коллизии теперь аппаратно отключены через IgnoreLayerCollision(10, 10) в Awake ──
 
         // ── Настройка микрофона из PlayerPrefs ──
         if (HasInputAuthority)
@@ -280,6 +294,7 @@ public class PlayerController : NetworkBehaviour
         data.Buttons.Set(NetworkInputButtons.Crouch, _kb.leftCtrlKey.isPressed);
         data.Buttons.Set(NetworkInputButtons.Dash,   _kb.leftShiftKey.isPressed);
         data.Buttons.Set(NetworkInputButtons.Action, _kb.fKey.isPressed);
+        data.Buttons.Set(NetworkInputButtons.Interact, _kb.eKey.isPressed);
         data.Buttons.Set(NetworkInputButtons.PlantOak, _kb.digit1Key.isPressed);
         data.Buttons.Set(NetworkInputButtons.PlantVine, _kb.digit2Key.isPressed);
         data.Buttons.Set(NetworkInputButtons.PlantChamomile, _kb.digit3Key.isPressed);
@@ -529,7 +544,9 @@ public class PlayerController : NetworkBehaviour
             bool isG = _grower != null && _grower.IsGrowing;
             bool isR = _grower != null && _grower.IsRetracting;
 
-            if (isG || isR)
+            // КЛЮЧЕВОЙ ФИКС ААА: Коллайдер должен быть ВЫКЛЮЧЕН строгим условием до начала всех расчетов, 
+            // чтобы Unity не успевала посчитать sweep test при откатах сети (Rollback).
+            if (isG || isR || _isMantling)
             {
                 if (_cc.enabled) _cc.enabled = false;
             }
@@ -568,6 +585,8 @@ public class PlayerController : NetworkBehaviour
 
         if (!_isCrouching)
         {
+            HandleInteraction(); // <- Добавлена логика подбора предметов E
+
             bool jumpPressed = _currentPressed.IsSet(NetworkInputButtons.Jump);
             bool jumpHeld    = _currentInput.Buttons.IsSet(NetworkInputButtons.Jump);
             bool isMoving    = moveDir.sqrMagnitude > 0.01f;
@@ -732,7 +751,7 @@ public class PlayerController : NetworkBehaviour
         );
 
         // ── ЗАЩИТА ОТ ПРОХОЖДЕНИЯ СКВОЗЬ СТЕНЫ ──
-        int layerMask = ~0 & ~(1 << gameObject.layer);
+        int layerMask = ~0 & ~(1 << gameObject.layer) & ~(1 << 10); // Важно не зацепиться за другого игрока!
         
         float safeRadius = _cc.radius * 0.8f;
         
@@ -801,22 +820,48 @@ public class PlayerController : NetworkBehaviour
             newPos = Vector3.Lerp(_mantleTopPos, _mantleEndPos, t2);
         }
 
-        // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Отключаем CC при жестком изменении позиции.
-        // Иначе физика борется с сетевым транспортом, вызывая судороги.
-        _cc.enabled = false;
+        // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Так как _cc.enabled выключен строго в начале кадра,
+        // мы имеем полное право просто двигать transform.position. 
+        // Это гарантирует 0% взаимодействия с физикой и идеальную плавность при любых откатах.
         transform.position = newPos;
-        _cc.enabled = true;
 
         if (_mantleProgress >= 1f)
         {
             _isMantling = false;
             _velocity   = Vector3.zero;
+            // Коллайдер включится сам в начале следующего кадра
+        }
+    }
+
+    private void HandleInteraction()
+    {
+        if (_currentPressed.IsSet(NetworkInputButtons.Interact) && HasStateAuthority && _inventory != null)
+        {
+            // Используем Сферу впереди игрока (OverlapSphere), чтобы не нужно было идеально целиться лучом
+            Vector3 checkPos = transform.position + transform.forward * 1.5f + Vector3.up * 1f;
+            float checkRadius = 2f;
+            
+            // Находим все коллайдеры вокруг
+            Collider[] hits = Physics.OverlapSphere(checkPos, checkRadius, ~0, QueryTriggerInteraction.Collide);
+            foreach (var coll in hits)
+            {
+                WorldItem item = coll.GetComponentInParent<WorldItem>();
+                if (item != null)
+                {
+                    // Пытаемся взять предмет. Берем только первый успешный.
+                    if (_inventory.TryPickupItem(item.ItemID))
+                    {
+                        Runner.Despawn(item.Object);
+                        break;
+                    }
+                }
+            }
         }
     }
 
     private void HandleDash()
     {
-        if (_currentPressed.IsSet(NetworkInputButtons.Dash) && _dashCharges > 0 && !_isDashing)
+        if (_currentPressed.IsSet(NetworkInputButtons.Dash) && _dashCharges > 0 && !_isDashing && _isGrounded)
         {
             Quaternion lookRot = Quaternion.Euler(0f, _currentInput.LookAngles.y, 0f);
             Vector2 input      = _currentInput.MoveDirection;
@@ -908,7 +953,7 @@ public class PlayerController : NetworkBehaviour
         bool wasEnabled = _cc.enabled;
         if (wasEnabled) _cc.enabled = false;
 
-        int layerMask = ~0 & ~(1 << gameObject.layer);
+        int layerMask = ~0 & ~(1 << gameObject.layer) & ~(1 << 10);
         bool hit = Physics.CheckCapsule(p1, p2, r, layerMask, QueryTriggerInteraction.Ignore);
 
         if (wasEnabled) _cc.enabled = true;
@@ -942,7 +987,7 @@ public class PlayerController : NetworkBehaviour
     //  PING SYSTEM
     // ══════════════════════════════════════════════════════════════
 
-    [Rpc(RpcSources.InputAuthority, RpcTargets.All)]
+    [Rpc(RpcSources.All, RpcTargets.All)]
     public void RPC_SendPing(Vector3 pos, string pName)
     {
         if (Local != null)
@@ -958,6 +1003,22 @@ public class PlayerController : NetworkBehaviour
         
         // Воспроизводим звук локально, создавая временный AudioSource в месте пинга
         AudioSource.PlayClipAtPoint(_proceduralPingSound, pos, 0.8f);
+
+        // ── Создаем физически видимый 3D-луч (столб света) как в Apex/Fortnite ──
+        GameObject beamObj = new GameObject("PingBeam");
+        beamObj.transform.position = pos;
+        
+        LineRenderer lr = beamObj.AddComponent<LineRenderer>();
+        lr.positionCount = 2;
+        lr.SetPosition(0, pos); // Начинается четко в точке пинга
+        lr.SetPosition(1, pos + Vector3.up * 50f); // Уходит высоко в небо
+        lr.startWidth = 0.4f;
+        lr.endWidth = 0.4f;
+        lr.material = new Material(Shader.Find("Sprites/Default")); // Светящийся неулиточный материал
+        lr.startColor = new Color(1f, 0.7f, 0.1f, 0.7f); // Ярко-желтый снизу
+        lr.endColor = new Color(1f, 0.7f, 0.1f, 0f);     // Растворяется вверху
+        
+        Destroy(beamObj, 5f); // Исчезнет ровно через 5 секунд вместе с меткой в OnGUI
     }
 
     private void GeneratePingAssets()

@@ -2,6 +2,13 @@ fileFormatVersion: 2
 guid: 68acfbea2d25afe4bb92caf015df0a37
 labels:
 - FusionDefaultGlobal
+AssetOrigin:
+  serializedVersion: 1
+  productId: 286072
+  packageName: Projectiles Advanced Multiplayer - Photon Fusion
+  packageVersion: 2.0.3
+  assetPath: Assets/Photon/Fusion/Resources/NetworkProjectConfig.fusion
+  uploadId: 718776
 ScriptedImporter:
   internalIDToNameTable: []
   externalObjects: {}
@@ -13,10 +20,3 @@ ScriptedImporter:
   PrefabOptions:
     UnloadPrefabOnReleasingLastInstance: 0
     UnloadUnusedPrefabsOnShutdown: 0
-AssetOrigin:
-  serializedVersion: 1
-  productId: 286072
-  packageName: Projectiles Advanced Multiplayer - Photon Fusion
-  packageVersion: 2.0.3
-  assetPath: Assets/Photon/Fusion/Resources/NetworkProjectConfig.fusion
-  uploadId: 718776

@@ -202,6 +202,10 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
             Destroy(runner.gameObject);
         }
 
+        // Принудительно освобождаем курсор при завершении сессии
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+
         // Если хост кикает нас или выходим, мы возвращаемся в MainMenu
         if (SceneManager.GetActiveScene().name != "MainMenu")
         {

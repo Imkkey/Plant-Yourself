@@ -55,6 +55,10 @@ public class MainMenuUI : MonoBehaviour
 
     private void Start()
     {
+        // ── Обязательно Разблокируем курсор для Меню ──
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+
         // Привязываем кнопки бокового меню
         if (btnPlay != null) btnPlay.onClick.AddListener(() => SwitchPanel(panelPlay));
         if (btnNews != null) btnNews.onClick.AddListener(() => SwitchPanel(panelNews));
@@ -65,9 +69,23 @@ public class MainMenuUI : MonoBehaviour
         if (btnHost != null) btnHost.onClick.AddListener(() => StartGame("Host"));
         if (btnJoin != null) btnJoin.onClick.AddListener(() => StartGame("Client"));
 
-        // Восстанавливаем만 никнейм
+        // Восстанавливаем никнейм
         if (PlayerPrefs.HasKey("SavedNickname") && inputNickname != null)
-            inputNickname.text = PlayerPrefs.GetString("SavedNickname");
+        {
+            string savedName = PlayerPrefs.GetString("SavedNickname");
+            inputNickname.text = savedName;
+            NetworkManager.LocalPlayerName = savedName;
+        }
+
+        // Автоматически сохраняем никнейм при каждом вводе символа
+        if (inputNickname != null)
+        {
+            inputNickname.onValueChanged.AddListener((val) => {
+                PlayerPrefs.SetString("SavedNickname", val);
+                NetworkManager.LocalPlayerName = val; // Сразу обновляем в менеджере
+                PlayerPrefs.Save();
+            });
+        }
 
         // Привязываем кнопки лобби
         if (btnStartGame != null) btnStartGame.onClick.AddListener(() => {
@@ -230,18 +248,19 @@ public class MainMenuUI : MonoBehaviour
             return;
         }
 
-        // 1. Сохраняем имя
+        // 1. Убеждаемся, что захватили актуальный ник из поля
         if (inputNickname != null && !string.IsNullOrWhiteSpace(inputNickname.text))
         {
             NetworkManager.LocalPlayerName = inputNickname.text.Trim();
         }
-        else
+
+        // Если ник совсем пустой, генерируем случайный
+        if (string.IsNullOrWhiteSpace(NetworkManager.LocalPlayerName) || NetworkManager.LocalPlayerName == "Player")
         {
             NetworkManager.LocalPlayerName = "Игрок " + Random.Range(100, 999);
+            PlayerPrefs.SetString("SavedNickname", NetworkManager.LocalPlayerName);
+            PlayerPrefs.Save();
         }
-
-        PlayerPrefs.SetString("SavedNickname", NetworkManager.LocalPlayerName);
-        PlayerPrefs.Save();
 
         // 2. Пробуем запустить сервер или подключиться к игре
         bool success = false;
