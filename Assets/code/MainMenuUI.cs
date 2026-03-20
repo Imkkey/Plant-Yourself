@@ -55,6 +55,9 @@ public class MainMenuUI : MonoBehaviour
 
     private void Start()
     {
+        // Снимаем ограничение ФПС на мобилках (по умолчанию там 30)
+        Application.targetFrameRate = 120;
+        
         // ── Обязательно Разблокируем курсор для Меню ──
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;

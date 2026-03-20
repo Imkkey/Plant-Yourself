@@ -1,0 +1,2 @@
+C:\UnityProjects\Plant-Yourself\Library\Bee\Android\Prj\IL2CPP\Gradle\unityLibrary\src\main\cpp\CMakeLists.txt
+C:\UnityProjects\Plant-Yourself\Library\Bee\Android\Prj\IL2CPP\Gradle\unityLibrary\src\main\cpp\GameActivity\CMakeLists.txt

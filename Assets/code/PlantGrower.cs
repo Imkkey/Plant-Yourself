@@ -431,6 +431,30 @@ public class PlantGrower : NetworkBehaviour
         LastBlockPos = transform.position;
     }
 
+    // Добавленная функция для выхода из любой формы растения
+    public void ExitPlantForm()
+    {
+        if (HasInputAuthority)
+        {
+            RPC_ExitPlantForm();
+        }
+    }
+
+    [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
+    public void RPC_ExitPlantForm()
+    {
+        if (InChamomileForm)
+        {
+            ExitChamomileForm();
+        }
+        else if (IsGrowing || IsRetracting)
+        {
+            IsGrowing = false;
+            IsRetracting = true;
+            _retractTimer = 0f;
+        }
+    }
+
     private void ProcessChamomileGrowth(NetworkInputData input, NetworkButtons pressed)
     {
         bool actionHeld = input.Buttons.IsSet(NetworkInputButtons.Action);
@@ -452,13 +476,6 @@ public class PlantGrower : NetworkBehaviour
         }
         else
         {
-            // Exit form
-            if (jumpPressed)
-            {
-                ExitChamomileForm();
-                return;
-            }
-
             // Did we just press Action?
             if (actionHeld && !WasActionHeld)
             {

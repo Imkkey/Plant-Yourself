@@ -281,24 +281,55 @@ public class PlayerController : NetworkBehaviour
         if (_grower != null && !_grower.IsPlantSelected) return data; // Отключаем ввод до выбора
 
         _kb = Keyboard.current;
-        if (_kb == null) return data;
-
+        
         float h = 0f, v = 0f;
-        if (_kb.dKey.isPressed || _kb.rightArrowKey.isPressed)  h += 1f;
-        if (_kb.aKey.isPressed || _kb.leftArrowKey.isPressed)   h -= 1f;
-        if (_kb.wKey.isPressed || _kb.upArrowKey.isPressed)     v += 1f;
-        if (_kb.sKey.isPressed || _kb.downArrowKey.isPressed)   v -= 1f;
-        data.MoveDirection = new Vector2(h, v);
+        bool jmp = false, crouch = false, dash = false, act = false, inetract = false;
+        bool p1 = false, p2 = false, p3 = false;
 
-        data.Buttons.Set(NetworkInputButtons.Jump,   _kb.spaceKey.isPressed);
-        data.Buttons.Set(NetworkInputButtons.Crouch, _kb.leftCtrlKey.isPressed);
-        data.Buttons.Set(NetworkInputButtons.Dash,   _kb.leftShiftKey.isPressed);
-        data.Buttons.Set(NetworkInputButtons.Action, _kb.fKey.isPressed);
-        data.Buttons.Set(NetworkInputButtons.Interact, _kb.eKey.isPressed);
-        data.Buttons.Set(NetworkInputButtons.PlantOak, _kb.digit1Key.isPressed);
-        data.Buttons.Set(NetworkInputButtons.PlantVine, _kb.digit2Key.isPressed);
-        data.Buttons.Set(NetworkInputButtons.PlantChamomile, _kb.digit3Key.isPressed);
+        // PC Ввод
+        if (_kb != null)
+        {
+            if (_kb.dKey.isPressed || _kb.rightArrowKey.isPressed)  h += 1f;
+            if (_kb.aKey.isPressed || _kb.leftArrowKey.isPressed)   h -= 1f;
+            if (_kb.wKey.isPressed || _kb.upArrowKey.isPressed)     v += 1f;
+            if (_kb.sKey.isPressed || _kb.downArrowKey.isPressed)   v -= 1f;
+            
+            jmp = _kb.spaceKey.isPressed;
+            crouch = _kb.leftCtrlKey.isPressed;
+            dash = _kb.leftShiftKey.isPressed;
+            act = _kb.fKey.isPressed;
+            inetract = _kb.eKey.isPressed;
+            p1 = _kb.digit1Key.isPressed;
+            p2 = _kb.digit2Key.isPressed;
+            p3 = _kb.digit3Key.isPressed;
+        }
 
+        // Мобильный ввод
+        if (MobileInputManager.Instance != null)
+        {
+            h += MobileInputManager.Instance.Move.x;
+            v += MobileInputManager.Instance.Move.y;
+            
+            jmp |= MobileInputManager.Instance.Jump;
+            crouch |= MobileInputManager.Instance.Crouch;
+            dash |= MobileInputManager.Instance.Dash;
+            act |= MobileInputManager.Instance.Action;
+            inetract |= MobileInputManager.Instance.Interact;
+            p1 |= MobileInputManager.Instance.PlantOak;
+            p2 |= MobileInputManager.Instance.PlantVine;
+            p3 |= MobileInputManager.Instance.PlantChamomile;
+        }
+
+        data.MoveDirection = new Vector2(Mathf.Clamp(h, -1f, 1f), Mathf.Clamp(v, -1f, 1f));
+
+        data.Buttons.Set(NetworkInputButtons.Jump,   jmp);
+        data.Buttons.Set(NetworkInputButtons.Crouch, crouch);
+        data.Buttons.Set(NetworkInputButtons.Dash,   dash);
+        data.Buttons.Set(NetworkInputButtons.Action, act);
+        data.Buttons.Set(NetworkInputButtons.Interact, inetract);
+        data.Buttons.Set(NetworkInputButtons.PlantOak, p1);
+        data.Buttons.Set(NetworkInputButtons.PlantVine, p2);
+        data.Buttons.Set(NetworkInputButtons.PlantChamomile, p3);
 
         data.LookAngles = new Vector2(_pitch, _yaw);
         return data;
@@ -332,7 +363,7 @@ public class PlayerController : NetworkBehaviour
 
         _kb    = Keyboard.current;
         _mouse = Mouse.current;
-        if (_kb == null || _mouse == null) return;
+        // if (_kb == null || _mouse == null) return; На мобилках их нет, убираем этот жесткий выход
 
         if (_grower != null && !_grower.IsPlantSelected)
         {
@@ -340,7 +371,7 @@ public class PlayerController : NetworkBehaviour
             return;
         }
 
-        if (_kb.tabKey.isPressed)
+        if (_kb != null && _kb.tabKey.isPressed)
         {
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible   = true;
@@ -355,7 +386,7 @@ public class PlayerController : NetworkBehaviour
         HandleLook();
 
         // ── PING SYSTEM ──
-        if (_mouse.middleButton.wasPressedThisFrame && cam != null)
+        if (_mouse != null && _mouse.middleButton.wasPressedThisFrame && cam != null)
         {
             Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
             if (Physics.Raycast(ray, out RaycastHit pingHit, 500f, ~0, QueryTriggerInteraction.Ignore))
@@ -416,13 +447,16 @@ public class PlayerController : NetworkBehaviour
     {
         if (Object == null || !Object.IsValid) return;
         if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMenu") return;
-        if (!HasInputAuthority || _mouse == null) return;
+        if (!HasInputAuthority) return;
         PositionCamera();
     }
 
     private void HandleLook()
     {
-        Vector2 delta = _mouse.delta.ReadValue();
+        Vector2 delta = Vector2.zero;
+        if (_mouse != null) delta += _mouse.delta.ReadValue();
+        if (MobileInputManager.Instance != null) delta += MobileInputManager.Instance.LookDelta;
+
         _yaw   += delta.x * mouseSensitivity;
         _pitch -= delta.y * mouseSensitivity;
         _pitch  = Mathf.Clamp(_pitch, pitchMin, pitchMax);
@@ -435,7 +469,7 @@ public class PlayerController : NetworkBehaviour
     {
         if (cam == null) return;
 
-        float scroll = _mouse.scroll.ReadValue().y;
+        float scroll = _mouse != null ? _mouse.scroll.ReadValue().y : 0f;
         camDistance  = Mathf.Clamp(camDistance - scroll * camScrollSpeed * 0.01f,
                                    camMinDistance, camMaxDistance);
 
@@ -448,8 +482,14 @@ public class PlayerController : NetworkBehaviour
 
         if (_grower != null && (_grower.IsGrowing || _grower.IsRetracting))
         {
-            targetPivot = _grower.LastBlockPos;
+            // Поднимаем точку фокусировки камеры, чтобы она не лежала прямо на земле и не проваливалась под текстуры
+            targetPivot = _grower.LastBlockPos + Vector3.up * 1.5f;
             targetBaseDist = 5.5f;
+            
+            if (_grower.CurrentPlant == PlantType.Oak)
+            {
+                targetBaseDist = 8.5f;
+            }
 
             if (_grower.InChamomileForm)
             {
@@ -489,13 +529,27 @@ public class PlayerController : NetworkBehaviour
         // 1. Увеличиваем радиус SphereCast, чтобы учесть конусообразный фрустум камеры с высоким FOV
         float actualCollisionRadius = Mathf.Max(camCollisionRadius, cam.nearClipPlane * 1.5f);
 
-        if (Physics.SphereCast(pivotWithOffset, actualCollisionRadius,
-                               backDir, out RaycastHit hit,
-                               targetBaseDist, camCollisionMask,
-                               QueryTriggerInteraction.Ignore))
+        bool isGrowingOak = _grower != null && (_grower.IsGrowing || _grower.IsRetracting) && _grower.CurrentPlant == PlantType.Oak;
+        bool isGrowingVine = _grower != null && (_grower.IsGrowing || _grower.IsRetracting) && _grower.CurrentPlant == PlantType.Vine;
+
+        RaycastHit[] hits = Physics.SphereCastAll(pivotWithOffset, actualCollisionRadius,
+                               backDir, targetBaseDist, camCollisionMask, QueryTriggerInteraction.Ignore);
+        
+        float closestHitDist = targetBaseDist;
+        foreach (var h in hits)
         {
-            desiredDist = Mathf.Max(hit.distance, camMinDistance);
+            if (h.collider.transform.root == transform.root) continue; 
+            
+            // Игнорируем блоки дерева
+            if (isGrowingOak && h.collider.GetComponentInParent<OakBlock>() != null) continue;
+            if (isGrowingVine && h.collider.GetComponentInParent<VineBlock>() != null) continue;
+            
+            float hitDist = Mathf.Max(0f, h.distance); // Перестраховка если мы уже внутри (distance 0)
+            if (hitDist < closestHitDist)
+                closestHitDist = hitDist;
         }
+
+        desiredDist = Mathf.Max(closestHitDist, camMinDistance);
 
         if (desiredDist < _currentCamDist)
             _currentCamDist = desiredDist;
@@ -505,7 +559,21 @@ public class PlayerController : NetworkBehaviour
 
         // Гарантируем, что камера не провалится в саму стену даже при подходе вплотную
         Vector3 finalCamPos = pivotWithOffset + backDir * _currentCamDist;
-        if (Physics.CheckSphere(finalCamPos, cam.nearClipPlane * 1.1f, camCollisionMask, QueryTriggerInteraction.Ignore))
+        
+        bool isInsideWall = false;
+        Collider[] overlapHits = Physics.OverlapSphere(finalCamPos, cam.nearClipPlane * 1.1f, camCollisionMask, QueryTriggerInteraction.Ignore);
+        foreach (var coll in overlapHits)
+        {
+            if (coll.transform.root == transform.root) continue;
+
+            if (isGrowingOak && coll.GetComponentInParent<OakBlock>() != null) continue;
+            if (isGrowingVine && coll.GetComponentInParent<VineBlock>() != null) continue;
+
+            isInsideWall = true;
+            break;
+        }
+
+        if (isInsideWall)
         {
              _currentCamDist = Mathf.Max(camMinDistance, _currentCamDist - cam.nearClipPlane * 1.5f);
              finalCamPos = pivotWithOffset + backDir * _currentCamDist;
