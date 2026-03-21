@@ -178,8 +178,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: Vine
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 2a09b5501c9e53345bc20ecc6bab6710, type: 2}
-  m_sharedMaterial: {fileID: 5758427783198618538, guid: 2a09b5501c9e53345bc20ecc6bab6710, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: abc3717f3653cd749b4a0d795d900c30, type: 2}
+  m_sharedMaterial: {fileID: 6761167443919628071, guid: abc3717f3653cd749b4a0d795d900c30, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -213,7 +213,7 @@ MonoBehaviour:
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
   m_textAlignment: 65535
-  m_characterSpacing: 0
+  m_characterSpacing: -10.2
   m_characterHorizontalScale: 1
   m_wordSpacing: 0
   m_lineSpacing: 0
@@ -1931,8 +1931,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: New Text
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
-  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 21f7db28e93dbaa48a00693ee0b5b4ab, type: 2}
+  m_sharedMaterial: {fileID: -4084459720151296988, guid: 21f7db28e93dbaa48a00693ee0b5b4ab, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -1956,8 +1956,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 27.51
-  m_fontSizeBase: 27.51
+  m_fontSize: 21.67
+  m_fontSizeBase: 21.67
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -2903,8 +2903,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: Flower
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 2a09b5501c9e53345bc20ecc6bab6710, type: 2}
-  m_sharedMaterial: {fileID: 5758427783198618538, guid: 2a09b5501c9e53345bc20ecc6bab6710, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: abc3717f3653cd749b4a0d795d900c30, type: 2}
+  m_sharedMaterial: {fileID: 6761167443919628071, guid: abc3717f3653cd749b4a0d795d900c30, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -2938,7 +2938,7 @@ MonoBehaviour:
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
   m_textAlignment: 65535
-  m_characterSpacing: 0
+  m_characterSpacing: -10.2
   m_characterHorizontalScale: 1
   m_wordSpacing: 0
   m_lineSpacing: 0
@@ -3040,8 +3040,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: Oak
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 2a09b5501c9e53345bc20ecc6bab6710, type: 2}
-  m_sharedMaterial: {fileID: 5758427783198618538, guid: 2a09b5501c9e53345bc20ecc6bab6710, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: abc3717f3653cd749b4a0d795d900c30, type: 2}
+  m_sharedMaterial: {fileID: 6761167443919628071, guid: abc3717f3653cd749b4a0d795d900c30, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -3075,7 +3075,7 @@ MonoBehaviour:
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
   m_textAlignment: 65535
-  m_characterSpacing: 0
+  m_characterSpacing: -10.2
   m_characterHorizontalScale: 1
   m_wordSpacing: 0
   m_lineSpacing: 0

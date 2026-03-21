@@ -189,8 +189,8 @@ MonoBehaviour:
   m_text: "\u041E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435 Plant Yourself\n28
     \u0444\u0435\u0432\u0440\u0430\u043B\u044F 2026"
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 2a09b5501c9e53345bc20ecc6bab6710, type: 2}
-  m_sharedMaterial: {fileID: 5758427783198618538, guid: 2a09b5501c9e53345bc20ecc6bab6710, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: abc3717f3653cd749b4a0d795d900c30, type: 2}
+  m_sharedMaterial: {fileID: -2754853565694605433, guid: abc3717f3653cd749b4a0d795d900c30, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
